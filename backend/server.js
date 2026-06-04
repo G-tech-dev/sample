@@ -7,79 +7,141 @@ const cors = require('cors');
 const app = express();
 require('dotenv').config();
 
-
-const PORT = process.env.PORT ;         
-const MONGO_URI = process.env.MONGO_URI;
+const PORT = process.env.PORT || 5000;
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/hrms_db';
 const SALT_ROUNDS = 10;
 
-
+// ======================== MIDDLEWARE ========================
 app.use(cors({
-    origin: 'http://localhost:5173',   
-    credentials: true
+    origin: 'http://localhost:5173',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
 }));
-
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-const tradeSchema = new mongoose.Schema({
-    trade_name: { type: String, required: true, unique: true },
+// ======================== SCHEMAS ========================
+
+// Department Schema
+const departmentSchema = new mongoose.Schema({
+    departName: { type: String, required: true, unique: true },
+    description: { type: String },
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
-const Trade = mongoose.model('Trade', tradeSchema);
+const Department = mongoose.model('Department', departmentSchema);
 
-const moduleSchema = new mongoose.Schema({
-    module_name: { type: String, required: true },
-    module_code: { type: String, required: true, unique: true },
-    credits: { type: Number, required: true, min: 0 },
-    trade_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Trade', required: true },
+// Position Schema
+const positionSchema = new mongoose.Schema({
+    posName: { type: String, required: true, unique: true },
+    requiredQualification: { type: String, required: true },
+    department_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', required: true },
+    salary_range: { 
+        min: { type: Number, default: 0 },
+        max: { type: Number, default: 0 }
+    },
     created_at: { type: Date, default: Date.now },
     updated_at: { type: Date, default: Date.now }
 }, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
-const Module = mongoose.model('Module', moduleSchema);
+const Position = mongoose.model('Position', positionSchema);
 
-const enrollmentSchema = new mongoose.Schema({
-    module_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Module', required: true },
-    enrollment_date: { type: Date, default: Date.now },
-    completion_status: { type: String, enum: ['enrolled', 'completed', 'dropped', 'failed'], default: 'enrolled' },
-    formative: { type: Number, min: 0, max: 50, default: null },
-    summative: { type: Number, min: 0, max: 50, default: null },
-    total_marks: { type: Number, min: 0, max: 100, default: null },
-    grade: { type: Number, min: 0, max: 100, default: null },
-    completed_at: { type: Date, default: null }
-});
+// Employee Schema
+const employeeSchema = new mongoose.Schema({
+    empFirstname: { type: String, required: true },
+    empLastname: { type: String, required: true },
+    empGender: { type: String, enum: ['male', 'female', 'other'], required: true },
+    empdateOfBirth: { type: Date, required: true },
+    empHiredate: { type: Date, required: true, default: Date.now },
+    empstatus: { 
+        type: String, 
+        enum: ['active', 'on_leave', 'suspended', 'terminated', 'retired'], 
+        default: 'active' 
+    },
+    email: { type: String, required: true, unique: true },
+    phone: { type: String },
+    address: { type: String },
+    employee_id: { type: String, unique: true },
+    department_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Department' },
+    position_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Position' },
+    salary: { type: Number, default: 0 },
+    created_at: { type: Date, default: Date.now },
+    updated_at: { type: Date, default: Date.now }
+}, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
 
-enrollmentSchema.pre('save', function(next) {
-    if (this.formative !== null && this.summative !== null) {
-        this.total_marks = this.formative + this.summative;
-        this.grade = this.total_marks;
+// Auto-generate employee ID
+employeeSchema.pre('save', async function(next) {
+    if (!this.employee_id) {
+        const count = await mongoose.model('Employee').countDocuments();
+        this.employee_id = `EMP${String(count + 1).padStart(5, '0')}`;
     }
     next();
 });
 
-const traineeSchema = new mongoose.Schema({
-    firstnames: { type: String, required: true },
-    lastnames: { type: String, required: true },
-    gender: { type: String, enum: ['male', 'female'], required: true },
-    trade_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Trade', required: true },
-    enrollments: [enrollmentSchema],
-    created_at: { type: Date, default: Date.now },
-    updated_at: { type: Date, default: Date.now }
-}, { timestamps: { createdAt: 'created_at', updatedAt: 'updated_at' } });
-const Trainee = mongoose.model('Trainee', traineeSchema);
+const Employee = mongoose.model('Employee', employeeSchema);
 
+// User Schema (for authentication)
 const userSchema = new mongoose.Schema({
     userName: { type: String, required: true, unique: true },
     password: { type: String, required: true },
-    role: { type: String, enum: ['admin', 'trainer', 'viewer'], default: 'viewer' },
+    role: { type: String, enum: ['admin', 'hr_manager', 'hr_staff', 'viewer'], default: 'admin' },
+    employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     created_at: { type: Date, default: Date.now }
 });
 const User = mongoose.model('User', userSchema);
 
+// Attendance Schema
+const attendanceSchema = new mongoose.Schema({
+    employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    date: { type: Date, required: true },
+    check_in: { type: Date },
+    check_out: { type: Date },
+    status: { type: String, enum: ['present', 'absent', 'late', 'half_day'], default: 'present' },
+    overtime_hours: { type: Number, default: 0 },
+    created_at: { type: Date, default: Date.now }
+});
+const Attendance = mongoose.model('Attendance', attendanceSchema);
+
+// Leave Schema
+const leaveSchema = new mongoose.Schema({
+    employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    leave_type: { type: String, enum: ['annual', 'sick', 'unpaid', 'maternity', 'paternity', 'bereavement'], required: true },
+    start_date: { type: Date, required: true },
+    end_date: { type: Date, required: true },
+    reason: { type: String },
+    status: { type: String, enum: ['pending', 'approved', 'rejected', 'cancelled'], default: 'pending' },
+    approved_by: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+    approved_date: { type: Date },
+    created_at: { type: Date, default: Date.now }
+});
+const Leave = mongoose.model('Leave', leaveSchema);
+
+// Payroll Schema
+const payrollSchema = new mongoose.Schema({
+    employee_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true },
+    month: { type: Number, required: true },
+    year: { type: Number, required: true },
+    basic_salary: { type: Number, required: true },
+    allowances: { type: Number, default: 0 },
+    deductions: { type: Number, default: 0 },
+    bonus: { type: Number, default: 0 },
+    net_salary: { type: Number },
+    payment_date: { type: Date },
+    payment_status: { type: String, enum: ['pending', 'paid', 'cancelled'], default: 'pending' },
+    created_at: { type: Date, default: Date.now }
+});
+
+payrollSchema.pre('save', function(next) {
+    this.net_salary = this.basic_salary + this.allowances + this.bonus - this.deductions;
+    next();
+});
+
+const Payroll = mongoose.model('Payroll', payrollSchema);
+
 // ======================== AUTH MIDDLEWARE ========================
 function requireLogin(req, res, next) {
-    if (!req.session.userId) {
+    if (!req.session || !req.session.userId) {
         return res.status(401).json({ error: 'Unauthorized, please login' });
     }
     next();
@@ -87,297 +149,477 @@ function requireLogin(req, res, next) {
 
 // ======================== CONNECT TO MONGODB AND START SERVER ========================
 mongoose.connect(MONGO_URI)
-    .then(() => {
-        console.log('Connected to MongoDB');
+    .then(async () => {
+        console.log('✅ Connected to MongoDB');
 
-        // -------------------- SESSION MIDDLEWARE (AFTER CONNECTION) --------------------
+        // Session Middleware - Configure BEFORE routes
         app.use(session({
-            secret: process.env.SESSION_SECRET,
+            secret: process.env.SESSION_SECRET || 'hrms_secret_key',
             resave: false,
             saveUninitialized: false,
             store: MongoStore.create({ client: mongoose.connection.getClient() }),
-            cookie: { maxAge: 1000 * 60 * 60 * 24 }
+            cookie: { 
+                maxAge: 1000 * 60 * 60 * 24, // 24 hours
+                httpOnly: true,
+                secure: false, // Set to true if using HTTPS
+                sameSite: 'lax'
+            }
         }));
 
-        // -------------------- AUTH ROUTES --------------------
-        app.post('/api/register', async (req, res) => {
+        // ======================== AUTH ROUTES ========================
+
+        // Test endpoint
+        app.get('/api/test', (req, res) => {
+            res.json({ message: 'Server is running!', session: req.sessionID });
+        });
+
+        // Check username availability
+        app.get('/api/check-username/:username', async (req, res) => {
             try {
-                const { userName, password, role } = req.body;
-                if (!userName || !password) return res.status(400).json({ error: 'Username and password required' });
-                const existing = await User.findOne({ userName });
-                if (existing) return res.status(409).json({ error: 'Username already exists' });
-                const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
-                const user = new User({ userName, password: hashedPassword, role: role || 'viewer' });
-                await user.save();
-                res.status(201).json({ message: 'User registered successfully', userId: user._id });
+                const { username } = req.params;
+                const existing = await User.findOne({ userName: username });
+                res.json({ available: !existing });
             } catch (err) {
                 res.status(500).json({ error: err.message });
             }
         });
 
+        // Register endpoint
+        app.post('/api/register', async (req, res) => {
+            try {
+                const { userName, password, employee_id } = req.body;
+                
+                console.log('Registration attempt for:', userName);
+                
+                if (!userName || !userName.trim()) {
+                    return res.status(400).json({ error: 'Username is required' });
+                }
+                
+                if (!password || password.length < 6) {
+                    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+                }
+                
+                const existing = await User.findOne({ userName: userName.trim() });
+                if (existing) {
+                    return res.status(409).json({ error: 'Username already exists' });
+                }
+                
+                const hashedPassword = await bcrypt.hash(password, 10);
+                
+                const user = new User({ 
+                    userName: userName.trim(), 
+                    password: hashedPassword, 
+                    role: 'admin',
+                    employee_id: employee_id || null
+                });
+                
+                await user.save();
+                
+                console.log('User registered successfully:', userName);
+                
+                res.status(201).json({ 
+                    message: 'Admin account created successfully!',
+                    userId: user._id,
+                    userName: user.userName,
+                    role: 'admin'
+                });
+            } catch (err) {
+                console.error('Registration error:', err);
+                res.status(500).json({ error: err.message });
+            }
+        });
+
+        // Login endpoint
         app.post('/api/login', async (req, res) => {
             try {
                 const { userName, password } = req.body;
-                const user = await User.findOne({ userName });
-                if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+                
+                console.log('Login attempt for:', userName);
+                
+                const user = await User.findOne({ userName: userName.trim() }).populate('employee_id');
+                
+                if (!user) {
+                    console.log('User not found:', userName);
+                    return res.status(401).json({ error: 'Invalid credentials' });
+                }
+                
                 const match = await bcrypt.compare(password, user.password);
-                if (!match) return res.status(401).json({ error: 'Invalid credentials' });
+                if (!match) {
+                    console.log('Invalid password for:', userName);
+                    return res.status(401).json({ error: 'Invalid credentials' });
+                }
+                
+                // Set session
                 req.session.userId = user._id;
                 req.session.userName = user.userName;
                 req.session.role = user.role;
-                res.json({ message: 'Login successful', user: { id: user._id, userName: user.userName, role: user.role } });
+                
+                // Save session explicitly
+                req.session.save((err) => {
+                    if (err) {
+                        console.error('Session save error:', err);
+                        return res.status(500).json({ error: 'Session error' });
+                    }
+                    
+                    console.log('Login successful for:', userName, 'Session ID:', req.sessionID);
+                    
+                    res.json({ 
+                        message: 'Login successful', 
+                        user: { 
+                            id: user._id, 
+                            userName: user.userName, 
+                            role: user.role,
+                            employee: user.employee_id
+                        } 
+                    });
+                });
             } catch (err) {
-                res.status(500).json({ error: err.message });
+                console.error('Login error:', err);
+                res.status(500).json({ error: 'Login failed' });
             }
         });
 
-        app.post('/api/logout', (req, res) => {
-            req.session.destroy(err => {
-                if (err) return res.status(500).json({ error: 'Logout failed' });
-                res.json({ message: 'Logged out' });
+        // Get current user endpoint
+        app.get('/api/me', (req, res) => {
+            console.log('Session check:', req.sessionID, 'UserId:', req.session?.userId);
+            
+            if (!req.session || !req.session.userId) {
+                return res.status(401).json({ error: 'Not authenticated' });
+            }
+            
+            res.json({ 
+                userId: req.session.userId, 
+                userName: req.session.userName, 
+                role: req.session.role || 'admin'
             });
         });
 
-        app.get('/api/me', requireLogin, (req, res) => {
-            res.json({ userId: req.session.userId, userName: req.session.userName, role: req.session.role });
-        });
-
-        // -------------------- CRUD: TRADES --------------------
-        app.get('/api/trades', requireLogin, async (req, res) => {
-            try {
-                const trades = await Trade.find();
-                res.json(trades);
-            } catch (err) { res.status(500).json({ error: err.message }); }
-        });
-
-        app.post('/api/trades', requireLogin, async (req, res) => {
-            try {
-                const { trade_name } = req.body;
-                const trade = new Trade({ trade_name });
-                await trade.save();
-                res.status(201).json(trade);
-            } catch (err) { res.status(400).json({ error: err.message }); }
-        });
-
-        app.put('/api/trades/:id', requireLogin, async (req, res) => {
-            try {
-                const trade = await Trade.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
-                if (!trade) return res.status(404).json({ error: 'Trade not found' });
-                res.json(trade);
-            } catch (err) { res.status(400).json({ error: err.message }); }
-        });
-
-        app.delete('/api/trades/:id', requireLogin, async (req, res) => {
-            try {
-                const trade = await Trade.findByIdAndDelete(req.params.id);
-                if (!trade) return res.status(404).json({ error: 'Trade not found' });
-                res.json({ message: 'Trade deleted' });
-            } catch (err) { res.status(500).json({ error: err.message }); }
-        });
-
-        // -------------------- CRUD: MODULES --------------------
-        app.get('/api/modules', requireLogin, async (req, res) => {
-            try {
-                const modules = await Module.find().populate('trade_id');
-                res.json(modules);
-            } catch (err) { res.status(500).json({ error: err.message }); }
-        });
-
-        app.post('/api/modules', requireLogin, async (req, res) => {
-            try {
-                const module = new Module(req.body);
-                await module.save();
-                res.status(201).json(module);
-            } catch (err) { res.status(400).json({ error: err.message }); }
-        });
-
-        app.put('/api/modules/:id', requireLogin, async (req, res) => {
-            try {
-                const module = await Module.findByIdAndUpdate(req.params.id, req.body, { new: true });
-                if (!module) return res.status(404).json({ error: 'Module not found' });
-                res.json(module);
-            } catch (err) { res.status(400).json({ error: err.message }); }
-        });
-
-        app.delete('/api/modules/:id', requireLogin, async (req, res) => {
-            try {
-                const module = await Module.findByIdAndDelete(req.params.id);
-                if (!module) return res.status(404).json({ error: 'Module not found' });
-                res.json({ message: 'Module deleted' });
-            } catch (err) { res.status(500).json({ error: err.message }); }
-        });
-
-        // -------------------- CRUD: TRAINEES & ENROLLMENTS --------------------
-        app.get('/api/trainees', requireLogin, async (req, res) => {
-            try {
-                const trainees = await Trainee.find().populate('trade_id').populate('enrollments.module_id');
-                res.json(trainees);
-            } catch (err) { res.status(500).json({ error: err.message }); }
-        });
-
-        app.get('/api/trainees/:id', requireLogin, async (req, res) => {
-            try {
-                const trainee = await Trainee.findById(req.params.id).populate('trade_id').populate('enrollments.module_id');
-                if (!trainee) return res.status(404).json({ error: 'Trainee not found' });
-                res.json(trainee);
-            } catch (err) { res.status(500).json({ error: err.message }); }
-        });
-
-        app.post('/api/trainees', requireLogin, async (req, res) => {
-            try {
-                const trainee = new Trainee(req.body);
-                await trainee.save();
-                res.status(201).json(trainee);
-            } catch (err) { res.status(400).json({ error: err.message }); }
-        });
-
-        app.put('/api/trainees/:id', requireLogin, async (req, res) => {
-            try {
-                const trainee = await Trainee.findByIdAndUpdate(req.params.id, req.body, { new: true });
-                if (!trainee) return res.status(404).json({ error: 'Trainee not found' });
-                res.json(trainee);
-            } catch (err) { res.status(400).json({ error: err.message }); }
-        });
-
-        app.delete('/api/trainees/:id', requireLogin, async (req, res) => {
-            try {
-                const trainee = await Trainee.findByIdAndDelete(req.params.id);
-                if (!trainee) return res.status(404).json({ error: 'Trainee not found' });
-                res.json({ message: 'Trainee deleted' });
-            } catch (err) { res.status(500).json({ error: err.message }); }
-        });
-
-        // -------------------- ENROLLMENT ADD (MISSING ROUTE) --------------------
-        app.post('/api/trainees/:traineeId/enrollments', requireLogin, async (req, res) => {
-            try {
-                const { module_id, enrollment_date, completion_status, grade } = req.body;
-                const trainee = await Trainee.findById(req.params.traineeId);
-                if (!trainee) return res.status(404).json({ error: 'Trainee not found' });
-
-                // Check for duplicate enrollment
-                const already = trainee.enrollments.find(e => e.module_id.toString() === module_id);
-                if (already) return res.status(400).json({ error: 'Already enrolled in this module' });
-
-                trainee.enrollments.push({
-                    module_id,
-                    enrollment_date: enrollment_date || new Date(),
-                    completion_status: completion_status || 'enrolled',
-                    grade: grade || null
-                });
-                await trainee.save();
-                res.status(201).json(trainee);
-            } catch (err) {
-                res.status(400).json({ error: err.message });
-            }
-        });
-
-        // -------------------- UPDATE ENROLLMENT STATUS --------------------
-        app.put('/api/trainees/:traineeId/enrollments/:moduleId', requireLogin, async (req, res) => {
-            try {
-                const { grade, completion_status } = req.body;
-                const trainee = await Trainee.findById(req.params.traineeId);
-                if (!trainee) return res.status(404).json({ error: 'Trainee not found' });
-                const enrollment = trainee.enrollments.find(e => e.module_id.toString() === req.params.moduleId);
-                if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-                if (grade !== undefined) enrollment.grade = grade;
-                if (completion_status) {
-                    enrollment.completion_status = completion_status;
-                    if (completion_status === 'completed') enrollment.completed_at = new Date();
+        // Logout endpoint
+        app.post('/api/logout', (req, res) => {
+            req.session.destroy(err => {
+                if (err) {
+                    console.error('Logout error:', err);
+                    return res.status(500).json({ error: 'Logout failed' });
                 }
-                await trainee.save();
-                res.json(trainee);
-            } catch (err) {
-                res.status(400).json({ error: err.message });
+                res.clearCookie('connect.sid');
+                res.json({ message: 'Logged out successfully' });
+            });
+        });
+
+        // ======================== DEPARTMENT CRUD ========================
+        app.get('/api/departments', requireLogin, async (req, res) => {
+            try {
+                const departments = await Department.find();
+                res.json(departments);
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
             }
         });
 
-        // -------------------- MARKS ENTRY --------------------
-        app.put('/api/trainees/:traineeId/enrollments/:moduleId/marks', requireLogin, async (req, res) => {
+        app.post('/api/departments', requireLogin, async (req, res) => {
             try {
-                const { formative, summative } = req.body;
-                const trainee = await Trainee.findById(req.params.traineeId);
-                if (!trainee) return res.status(404).json({ error: 'Trainee not found' });
-                const enrollment = trainee.enrollments.find(e => e.module_id.toString() === req.params.moduleId);
-                if (!enrollment) return res.status(404).json({ error: 'Enrollment not found' });
-                if (formative !== undefined) enrollment.formative = formative;
-                if (summative !== undefined) enrollment.summative = summative;
-                await trainee.save();
-                res.json({ message: 'Marks updated successfully', enrollment });
-            } catch (err) {
-                res.status(400).json({ error: err.message });
+                const department = new Department(req.body);
+                await department.save();
+                res.status(201).json(department);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
             }
         });
 
-        // -------------------- DELETE ENROLLMENT --------------------
-        app.delete('/api/trainees/:traineeId/enrollments/:moduleId', requireLogin, async (req, res) => {
+        app.put('/api/departments/:id', requireLogin, async (req, res) => {
             try {
-                const trainee = await Trainee.findById(req.params.traineeId);
-                if (!trainee) return res.status(404).json({ error: 'Trainee not found' });
-                trainee.enrollments = trainee.enrollments.filter(e => e.module_id.toString() !== req.params.moduleId);
-                await trainee.save();
-                res.json({ message: 'Enrollment removed' });
-            } catch (err) {
-                res.status(500).json({ error: err.message });
+                const department = await Department.findByIdAndUpdate(req.params.id, req.body, { new: true, runValidators: true });
+                if (!department) return res.status(404).json({ error: 'Department not found' });
+                res.json(department);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
             }
         });
 
-        // -------------------- COMPETENCY REPORT --------------------
-        app.get('/api/reports/competency', requireLogin, async (req, res) => {
+        app.delete('/api/departments/:id', requireLogin, async (req, res) => {
             try {
-                const { trade_id, module_id } = req.query;
-                let traineeQuery = {};
-                if (trade_id) traineeQuery.trade_id = trade_id;
-                let trainees = await Trainee.find(traineeQuery).populate('trade_id').populate('enrollments.module_id');
-                if (module_id) {
-                    trainees = trainees.filter(t =>
-                        t.enrollments.some(e => e.module_id?._id.toString() === module_id)
-                    );
+                const department = await Department.findByIdAndDelete(req.params.id);
+                if (!department) return res.status(404).json({ error: 'Department not found' });
+                res.json({ message: 'Department deleted' });
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        // ======================== POSITION CRUD ========================
+        app.get('/api/positions', requireLogin, async (req, res) => {
+            try {
+                const positions = await Position.find().populate('department_id');
+                res.json(positions);
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        app.post('/api/positions', requireLogin, async (req, res) => {
+            try {
+                const position = new Position(req.body);
+                await position.save();
+                res.status(201).json(position);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        app.put('/api/positions/:id', requireLogin, async (req, res) => {
+            try {
+                const position = await Position.findByIdAndUpdate(req.params.id, req.body, { new: true });
+                if (!position) return res.status(404).json({ error: 'Position not found' });
+                res.json(position);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        app.delete('/api/positions/:id', requireLogin, async (req, res) => {
+            try {
+                const position = await Position.findByIdAndDelete(req.params.id);
+                if (!position) return res.status(404).json({ error: 'Position not found' });
+                res.json({ message: 'Position deleted' });
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        // ======================== EMPLOYEE CRUD ========================
+        app.get('/api/employees', requireLogin, async (req, res) => {
+            try {
+                const employees = await Employee.find()
+                    .populate('department_id')
+                    .populate('position_id');
+                res.json(employees);
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        app.get('/api/employees/:id', requireLogin, async (req, res) => {
+            try {
+                const employee = await Employee.findById(req.params.id)
+                    .populate('department_id')
+                    .populate('position_id');
+                if (!employee) return res.status(404).json({ error: 'Employee not found' });
+                res.json(employee);
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        app.post('/api/employees', requireLogin, async (req, res) => {
+            try {
+                const employee = new Employee(req.body);
+                await employee.save();
+                res.status(201).json(employee);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        app.put('/api/employees/:id', requireLogin, async (req, res) => {
+            try {
+                const employee = await Employee.findByIdAndUpdate(req.params.id, req.body, { new: true });
+                if (!employee) return res.status(404).json({ error: 'Employee not found' });
+                res.json(employee);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        app.delete('/api/employees/:id', requireLogin, async (req, res) => {
+            try {
+                const employee = await Employee.findByIdAndDelete(req.params.id);
+                if (!employee) return res.status(404).json({ error: 'Employee not found' });
+                res.json({ message: 'Employee deleted' });
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        // ======================== ATTENDANCE ROUTES ========================
+        app.get('/api/attendance', requireLogin, async (req, res) => {
+            try {
+                const { start_date, end_date, employee_id } = req.query;
+                let query = {};
+                
+                if (employee_id) query.employee_id = employee_id;
+                if (start_date && end_date) {
+                    query.date = { $gte: new Date(start_date), $lte: new Date(end_date) };
                 }
-                const competent = [];
-                const notYetCompetent = [];
-                for (const trainee of trainees) {
-                    for (const enrollment of trainee.enrollments) {
-                        if (enrollment.total_marks !== null && enrollment.total_marks !== undefined) {
-                            if (module_id && enrollment.module_id?._id.toString() !== module_id) continue;
-                            const traineeInfo = {
-                                trainee_id: trainee._id,
-                                name: `${trainee.firstnames} ${trainee.lastnames}`,
-                                trade: trainee.trade_id?.trade_name,
-                                module: enrollment.module_id?.module_name,
-                                module_code: enrollment.module_id?.module_code,
-                                formative: enrollment.formative,
-                                summative: enrollment.summative,
-                                total_marks: enrollment.total_marks,
-                                completion_status: enrollment.completion_status
-                            };
-                            if (enrollment.total_marks >= 70) {
-                                competent.push(traineeInfo);
-                            } else {
-                                notYetCompetent.push(traineeInfo);
-                            }
-                        }
-                    }
+                
+                const attendance = await Attendance.find(query).populate('employee_id');
+                res.json(attendance);
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        app.post('/api/attendance', requireLogin, async (req, res) => {
+            try {
+                const attendance = new Attendance(req.body);
+                await attendance.save();
+                res.status(201).json(attendance);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        app.put('/api/attendance/:id', requireLogin, async (req, res) => {
+            try {
+                const attendance = await Attendance.findByIdAndUpdate(req.params.id, req.body, { new: true });
+                if (!attendance) return res.status(404).json({ error: 'Attendance record not found' });
+                res.json(attendance);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        // ======================== LEAVE ROUTES ========================
+        app.get('/api/leaves', requireLogin, async (req, res) => {
+            try {
+                const leaves = await Leave.find()
+                    .populate('employee_id')
+                    .populate('approved_by');
+                res.json(leaves);
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        app.post('/api/leaves', requireLogin, async (req, res) => {
+            try {
+                const leave = new Leave(req.body);
+                await leave.save();
+                res.status(201).json(leave);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        app.put('/api/leaves/:id/status', requireLogin, async (req, res) => {
+            try {
+                const { status } = req.body;
+                const leave = await Leave.findByIdAndUpdate(
+                    req.params.id, 
+                    { 
+                        status, 
+                        approved_by: req.session.userId,
+                        approved_date: status === 'approved' ? new Date() : null
+                    }, 
+                    { new: true }
+                );
+                if (!leave) return res.status(404).json({ error: 'Leave request not found' });
+                res.json(leave);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        // ======================== PAYROLL ROUTES ========================
+        app.get('/api/payroll', requireLogin, async (req, res) => {
+            try {
+                const { month, year, employee_id } = req.query;
+                let query = {};
+                
+                if (employee_id) query.employee_id = employee_id;
+                if (month && year) {
+                    query.month = parseInt(month);
+                    query.year = parseInt(year);
                 }
+                
+                const payroll = await Payroll.find(query).populate('employee_id');
+                res.json(payroll);
+            } catch (err) { 
+                res.status(500).json({ error: err.message }); 
+            }
+        });
+
+        app.post('/api/payroll', requireLogin, async (req, res) => {
+            try {
+                const payroll = new Payroll(req.body);
+                await payroll.save();
+                res.status(201).json(payroll);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        app.put('/api/payroll/:id/pay', requireLogin, async (req, res) => {
+            try {
+                const payroll = await Payroll.findByIdAndUpdate(
+                    req.params.id,
+                    { 
+                        payment_status: 'paid',
+                        payment_date: new Date()
+                    },
+                    { new: true }
+                );
+                if (!payroll) return res.status(404).json({ error: 'Payroll record not found' });
+                res.json(payroll);
+            } catch (err) { 
+                res.status(400).json({ error: err.message }); 
+            }
+        });
+
+        // ======================== REPORTS ========================
+        app.get('/api/reports/employee-summary', requireLogin, async (req, res) => {
+            try {
+                const totalEmployees = await Employee.countDocuments();
+                const activeEmployees = await Employee.countDocuments({ empstatus: 'active' });
+                const employeesByDepartment = await Employee.aggregate([
+                    { $group: { _id: '$department_id', count: { $sum: 1 } } },
+                    { $lookup: { from: 'departments', localField: '_id', foreignField: '_id', as: 'department' } }
+                ]);
+                
+                const employeesByPosition = await Employee.aggregate([
+                    { $group: { _id: '$position_id', count: { $sum: 1 } } },
+                    { $lookup: { from: 'positions', localField: '_id', foreignField: '_id', as: 'position' } }
+                ]);
+                
                 res.json({
-                    competent,
-                    notYetCompetent,
-                    summary: {
-                        total_competent: competent.length,
-                        total_not_yet_competent: notYetCompetent.length,
-                        total_assessed: competent.length + notYetCompetent.length
-                    }
+                    totalEmployees,
+                    activeEmployees,
+                    employeesByDepartment,
+                    employeesByPosition
                 });
             } catch (err) {
                 res.status(500).json({ error: err.message });
             }
         });
 
-        // -------------------- START SERVER --------------------
+        app.get('/api/reports/leave-summary', requireLogin, async (req, res) => {
+            try {
+                const pendingLeaves = await Leave.countDocuments({ status: 'pending' });
+                const approvedLeaves = await Leave.countDocuments({ status: 'approved' });
+                const rejectedLeaves = await Leave.countDocuments({ status: 'rejected' });
+                
+                const leavesByType = await Leave.aggregate([
+                    { $group: { _id: '$leave_type', count: { $sum: 1 } } }
+                ]);
+                
+                res.json({
+                    pendingLeaves,
+                    approvedLeaves,
+                    rejectedLeaves,
+                    leavesByType
+                });
+            } catch (err) {
+                res.status(500).json({ error: err.message });
+            }
+        });
+
+        // ======================== START SERVER ========================
         app.listen(PORT, () => {
-            console.log(`Server running on http://localhost:${PORT}`);
+            console.log(`✅ HRMS Server running on http://localhost:${PORT}`);
+            console.log(`📡 API available at http://localhost:${PORT}/api`);
+            console.log(`🔑 Test endpoint: http://localhost:${PORT}/api/test`);
         });
     })
     .catch(err => {
-        console.error('MongoDB connection error:', err);
+        console.error('❌ MongoDB connection error:', err);
         process.exit(1);
     });

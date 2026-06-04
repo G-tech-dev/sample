@@ -1,7 +1,8 @@
+// Login.js
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { FiUser, FiLock, FiLogIn, FiEye, FiEyeOff } from 'react-icons/fi';
+import { FiUser, FiLock, FiLogIn, FiEye, FiEyeOff, FiBriefcase } from 'react-icons/fi';
 
 const Login = () => {
     const [formData, setFormData] = useState({
@@ -86,18 +87,20 @@ const Login = () => {
     }, []);
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-black p-4">
+        <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-900 via-black to-gray-900 p-4">
             <div className="w-full max-w-md animate-fadeIn">
-                <div className="bg-gray-800 rounded-2xl shadow-2xl overflow-hidden transform transition-all duration-300 hover:scale-[1.01] border border-gray-700">
-                    <div className="h-2 bg-gradient-to-r from-amber-500 to-yellow-600"></div>
+                <div className="bg-gray-800/90 backdrop-blur-sm rounded-2xl shadow-2xl overflow-hidden transform transition-all duration-300 hover:scale-[1.01] border border-gray-700">
+                    <div className="h-2 bg-gradient-to-r from-blue-500 to-cyan-600"></div>
                     
                     <div className="p-8">
                         <div className="text-center mb-8">
-                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-amber-900/30 mb-3">
-                                <FiLogIn className="text-amber-400" size={28} />
+                            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-blue-900/30 mb-3">
+                                <FiBriefcase className="text-blue-400" size={28} />
                             </div>
-                            <h1 className="text-3xl font-extrabold text-amber-400">XWISDOM</h1>
-                            <p className="text-gray-400 text-sm mt-2">Training Management System</p>
+                            <h1 className="text-3xl font-extrabold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+                                HRMS PORTAL
+                            </h1>
+                            <p className="text-gray-400 text-sm mt-2">Human Resource Management System</p>
                         </div>
 
                         {apiError && (
@@ -112,7 +115,7 @@ const Login = () => {
                                 <label className="block text-sm font-semibold text-gray-300 mb-1">Username</label>
                                 <div className="relative group">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <FiUser className="text-gray-500 group-focus-within:text-amber-400 transition-colors" size={18} />
+                                        <FiUser className="text-gray-500 group-focus-within:text-blue-400 transition-colors" size={18} />
                                     </div>
                                     <input
                                         type="text"
@@ -121,7 +124,7 @@ const Login = () => {
                                         onChange={handleChange}
                                         className={`w-full pl-10 pr-4 py-2.5 bg-gray-900 border ${
                                             errors.username ? 'border-red-600' : 'border-gray-700'
-                                        } rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition text-gray-200 placeholder-gray-500`}
+                                        } rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition text-gray-200 placeholder-gray-500`}
                                         placeholder="Enter your username"
                                     />
                                 </div>
@@ -134,7 +137,7 @@ const Login = () => {
                                 <label className="block text-sm font-semibold text-gray-300 mb-1">Password</label>
                                 <div className="relative group">
                                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                        <FiLock className="text-gray-500 group-focus-within:text-amber-400 transition-colors" size={18} />
+                                        <FiLock className="text-gray-500 group-focus-within:text-blue-400 transition-colors" size={18} />
                                     </div>
                                     <input
                                         type={showPassword ? 'text' : 'password'}
@@ -143,7 +146,7 @@ const Login = () => {
                                         onChange={handleChange}
                                         className={`w-full pl-10 pr-12 py-2.5 bg-gray-900 border ${
                                             errors.password ? 'border-red-600' : 'border-gray-700'
-                                        } rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 transition text-gray-200 placeholder-gray-500`}
+                                        } rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition text-gray-200 placeholder-gray-500`}
                                         placeholder="Enter your password"
                                     />
                                     <button
@@ -165,11 +168,11 @@ const Login = () => {
                                         type="checkbox"
                                         checked={rememberMe}
                                         onChange={(e) => setRememberMe(e.target.checked)}
-                                        className="rounded border-gray-600 bg-gray-900 text-amber-500 focus:ring-amber-500 focus:ring-offset-0"
+                                        className="rounded border-gray-600 bg-gray-900 text-blue-500 focus:ring-blue-500 focus:ring-offset-0"
                                     />
                                     Remember me
                                 </label>
-                                <Link to="/forgot-password" className="text-sm text-amber-400 hover:text-amber-300 hover:underline">
+                                <Link to="/forgot-password" className="text-sm text-blue-400 hover:text-blue-300 hover:underline">
                                     Forgot password?
                                 </Link>
                             </div>
@@ -177,24 +180,24 @@ const Login = () => {
                             <button 
                                 type="submit" 
                                 disabled={loading}
-                                className="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-black font-semibold py-2.5 rounded-xl transition duration-200 shadow-md flex items-center justify-center gap-2"
+                                className="w-full bg-gradient-to-r from-blue-500 to-cyan-600 hover:from-blue-600 hover:to-cyan-700 disabled:from-gray-600 disabled:to-gray-700 disabled:cursor-not-allowed text-white font-semibold py-2.5 rounded-xl transition duration-200 shadow-md flex items-center justify-center gap-2"
                             >
                                 {loading ? (
                                     <>
-                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-black border-t-transparent"></div>
+                                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
                                         Authenticating...
                                     </>
                                 ) : (
                                     <>
                                         <FiLogIn size={18} />
-                                        Login
+                                        Login to HRMS
                                     </>
                                 )}
                             </button>                   
 
                             <p className="text-center text-gray-400 text-sm mt-4">
                                 Don't have an account?{' '}
-                                <Link to="/register" className="text-amber-400 hover:text-amber-300 font-semibold hover:underline">
+                                <Link to="/register" className="text-blue-400 hover:text-blue-300 font-semibold hover:underline">
                                     Register here
                                 </Link>
                             </p>
@@ -202,8 +205,8 @@ const Login = () => {
                     </div>
                 </div>
 
-                <p className="text-center text-gray-600 text-xs mt-6">
-                    Secure access for authorised personnel only
+                <p className="text-center text-gray-500 text-xs mt-6">
+                    Secure HRMS access for authorised personnel only
                 </p>
             </div>
         </div>

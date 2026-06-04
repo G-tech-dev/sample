@@ -1,41 +1,43 @@
-// Dashboard.jsx - Fully Responsive Version for XWISDOM Training Management (Black/Amber Theme)
+// Dashboard.jsx - HRMS Dashboard with Blue/Cyan Theme
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
   FiBriefcase,
-  FiBook,
+  FiAward,
   FiUsers,
-  FiBookOpen,
+  FiCalendar,
   FiTrendingUp, 
   FiTrendingDown, 
   FiAlertCircle,
   FiCheckCircle,
   FiXCircle,
   FiClock,
-  FiAward,
-  FiBarChart2
+  FiDollarSign,
+  FiBarChart2,
+  FiUserCheck,
+  FiUserX
 } from 'react-icons/fi';
 import toast from 'react-hot-toast';
 
 const api = axios.create({
-  baseURL: 'http://localhost:3000/api',
+  baseURL: 'http://localhost:5000/api',
   withCredentials: true
 });
 
 const Dashboard = () => {
   const [stats, setStats] = useState({
-    total_trades: 0,
-    total_modules: 0,
-    total_trainees: 0,
-    total_enrollments: 0,
-    enrolled_count: 0,
-    completed_count: 0,
-    dropped_count: 0,
-    failed_count: 0
+    total_departments: 0,
+    total_positions: 0,
+    total_employees: 0,
+    active_employees: 0,
+    on_leave: 0,
+    attendance_today: 0,
+    pending_leaves: 0,
+    monthly_payroll: 0
   });
-  const [recentEnrollments, setRecentEnrollments] = useState([]);
-  const [topTrades, setTopTrades] = useState([]);
-  const [recentTrainees, setRecentTrainees] = useState([]);
+  const [recentEmployees, setRecentEmployees] = useState([]);
+  const [topDepartments, setTopDepartments] = useState([]);
+  const [recentLeaves, setRecentLeaves] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -47,9 +49,9 @@ const Dashboard = () => {
     try {
       await Promise.all([
         fetchDashboardStats(),
-        fetchRecentEnrollments(),
-        fetchTopTrades(),
-        fetchRecentTrainees()
+        fetchRecentEmployees(),
+        fetchTopDepartments(),
+        fetchRecentLeaves()
       ]);
     } catch (err) {
       console.error('Error fetching dashboard data:', err);
@@ -61,43 +63,48 @@ const Dashboard = () => {
 
   const fetchDashboardStats = async () => {
     try {
-      const [tradesRes, modulesRes, traineesRes] = await Promise.all([
-        api.get('/trades'),
-        api.get('/modules'),
-        api.get('/trainees')
+      const [departmentsRes, positionsRes, employeesRes, leavesRes, attendanceRes, payrollRes] = await Promise.all([
+        api.get('/departments'),
+        api.get('/positions'),
+        api.get('/employees'),
+        api.get('/leaves'),
+        api.get('/attendance'),
+        api.get('/payroll')
       ]);
       
-      const trades = tradesRes.data;
-      const modules = modulesRes.data;
-      const trainees = traineesRes.data;
+      const departments = departmentsRes.data;
+      const positions = positionsRes.data;
+      const employees = employeesRes.data;
+      const leaves = leavesRes.data;
+      const attendance = attendanceRes.data;
+      const payroll = payrollRes.data;
       
-      let totalEnrollments = 0;
-      let enrolled = 0, completed = 0, dropped = 0, failed = 0;
+      const activeEmployees = employees.filter(emp => emp.empstatus === 'active').length;
+      const onLeave = employees.filter(emp => emp.empstatus === 'on_leave').length;
       
-      trainees.forEach(trainee => {
-        if (trainee.enrollments) {
-          totalEnrollments += trainee.enrollments.length;
-          trainee.enrollments.forEach(enrollment => {
-            switch (enrollment.completion_status) {
-              case 'enrolled': enrolled++; break;
-              case 'completed': completed++; break;
-              case 'dropped': dropped++; break;
-              case 'failed': failed++; break;
-              default: break;
-            }
-          });
-        }
-      });
+      // Attendance today
+      const today = new Date().toISOString().split('T')[0];
+      const attendanceToday = attendance.filter(att => att.date?.split('T')[0] === today).length;
+      
+      // Pending leaves
+      const pendingLeaves = leaves.filter(leave => leave.status === 'pending').length;
+      
+      // Monthly payroll (current month)
+      const currentMonth = new Date().getMonth() + 1;
+      const currentYear = new Date().getFullYear();
+      const monthlyPayroll = payroll
+        .filter(p => p.month === currentMonth && p.year === currentYear)
+        .reduce((sum, p) => sum + (p.net_salary || 0), 0);
       
       setStats({
-        total_trades: trades.length,
-        total_modules: modules.length,
-        total_trainees: trainees.length,
-        total_enrollments: totalEnrollments,
-        enrolled_count: enrolled,
-        completed_count: completed,
-        dropped_count: dropped,
-        failed_count: failed
+        total_departments: departments.length,
+        total_positions: positions.length,
+        total_employees: employees.length,
+        active_employees: activeEmployees,
+        on_leave: onLeave,
+        attendance_today: attendanceToday,
+        pending_leaves: pendingLeaves,
+        monthly_payroll: monthlyPayroll
       });
     } catch (err) {
       console.error('Failed to fetch dashboard stats:', err);
@@ -105,108 +112,113 @@ const Dashboard = () => {
     }
   };
 
-  const fetchRecentEnrollments = async () => {
+  const fetchRecentEmployees = async () => {
     try {
-      const traineesRes = await api.get('/trainees');
-      const trainees = traineesRes.data;
-      
-      let allEnrollments = [];
-      for (const trainee of trainees) {
-        if (trainee.enrollments && trainee.enrollments.length > 0) {
-          for (const enrollment of trainee.enrollments) {
-            let moduleName = enrollment.module_id?.module_name || 'Unknown Module';
-            allEnrollments.push({
-              id: `${trainee._id}-${enrollment._id}`,
-              traineeName: `${trainee.firstnames} ${trainee.lastnames}`,
-              moduleName: moduleName,
-              status: enrollment.completion_status,
-              enrollmentDate: new Date(enrollment.enrollment_date),
-              grade: enrollment.grade
-            });
-          }
-        }
-      }
-      
-      const sorted = allEnrollments.sort((a,b) => b.enrollmentDate - a.enrollmentDate).slice(0, 10);
-      setRecentEnrollments(sorted);
+      const employeesRes = await api.get('/employees');
+      const employees = employeesRes.data;
+      const sorted = employees
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 5);
+      setRecentEmployees(sorted);
     } catch (err) {
-      console.error('Failed to fetch recent enrollments:', err);
+      console.error('Failed to fetch recent employees:', err);
     }
   };
 
-  const fetchTopTrades = async () => {
+  const fetchTopDepartments = async () => {
     try {
-      const [tradesRes, traineesRes] = await Promise.all([
-        api.get('/trades'),
-        api.get('/trainees')
+      const [departmentsRes, employeesRes] = await Promise.all([
+        api.get('/departments'),
+        api.get('/employees')
       ]);
       
-      const trades = tradesRes.data;
-      const trainees = traineesRes.data;
+      const departments = departmentsRes.data;
+      const employees = employeesRes.data;
       
-      const tradeCounts = trades.map(trade => ({
-        ...trade,
-        traineeCount: trainees.filter(t => t.trade_id?._id === trade._id || t.trade_id === trade._id).length
+      const deptCounts = departments.map(dept => ({
+        ...dept,
+        employeeCount: employees.filter(emp => 
+          (emp.department_id?._id === dept._id || emp.department_id === dept._id)
+        ).length
       }));
       
-      const sorted = tradeCounts.sort((a,b) => b.traineeCount - a.traineeCount).slice(0, 5);
-      setTopTrades(sorted);
+      const sorted = deptCounts.sort((a, b) => b.employeeCount - a.employeeCount).slice(0, 5);
+      setTopDepartments(sorted);
     } catch (err) {
-      console.error('Failed to fetch top trades:', err);
+      console.error('Failed to fetch top departments:', err);
     }
   };
 
-  const fetchRecentTrainees = async () => {
+  const fetchRecentLeaves = async () => {
     try {
-      const traineesRes = await api.get('/trainees');
-      const trainees = traineesRes.data;
-      const sorted = trainees.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, 5);
-      setRecentTrainees(sorted);
+      const leavesRes = await api.get('/leaves');
+      const leaves = leavesRes.data;
+      const sorted = leaves
+        .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+        .slice(0, 5);
+      setRecentLeaves(sorted);
     } catch (err) {
-      console.error('Failed to fetch recent trainees:', err);
+      console.error('Failed to fetch recent leaves:', err);
     }
   };
 
-  const StatCard = ({ title, value, icon: Icon }) => (
-    <div className="bg-gray-800 rounded-xl shadow-md p-4 sm:p-6 hover:shadow-lg transition-all duration-300 border border-gray-700 hover:border-amber-500">
-      <div className="flex items-center justify-between">
-        <div className="flex-1 min-w-0">
-          <p className="text-gray-400 text-xs sm:text-sm font-medium truncate">{title}</p>
-          <p className="text-xl sm:text-2xl font-bold text-amber-400 mt-1 sm:mt-2 break-words">{value}</p>
-        </div>
-        <div className="p-2 sm:p-3 rounded-full bg-amber-900/30 flex-shrink-0 ml-2">
-          <Icon className="text-amber-400" size={20} />
+  const StatCard = ({ title, value, icon: Icon, color = 'blue' }) => {
+    const colorClasses = {
+      blue: 'border-blue-500/30 bg-blue-900/20 text-blue-400',
+      green: 'border-green-500/30 bg-green-900/20 text-green-400',
+      cyan: 'border-cyan-500/30 bg-cyan-900/20 text-cyan-400',
+      yellow: 'border-yellow-500/30 bg-yellow-900/20 text-yellow-400',
+      purple: 'border-purple-500/30 bg-purple-900/20 text-purple-400'
+    };
+    
+    return (
+      <div className={`bg-gray-800 rounded-xl shadow-md p-4 sm:p-6 hover:shadow-lg transition-all duration-300 border ${colorClasses[color]}`}>
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <p className="text-gray-400 text-xs sm:text-sm font-medium truncate">{title}</p>
+            <p className="text-xl sm:text-2xl font-bold mt-1 sm:mt-2 break-words">{value}</p>
+          </div>
+          <div className={`p-2 sm:p-3 rounded-full flex-shrink-0 ml-2 ${colorClasses[color]}`}>
+            <Icon size={20} />
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
-  const getStatusIcon = (status) => {
+  const getLeaveStatusIcon = (status) => {
     switch(status) {
-      case 'enrolled': return <FiClock className="text-blue-400" size={14} />;
-      case 'completed': return <FiCheckCircle className="text-green-400" size={14} />;
-      case 'dropped': return <FiXCircle className="text-red-400" size={14} />;
-      case 'failed': return <FiAlertCircle className="text-orange-400" size={14} />;
+      case 'pending': return <FiClock className="text-yellow-400" size={14} />;
+      case 'approved': return <FiCheckCircle className="text-green-400" size={14} />;
+      case 'rejected': return <FiXCircle className="text-red-400" size={14} />;
       default: return null;
     }
   };
 
-  const getStatusColor = (status) => {
+  const getLeaveStatusColor = (status) => {
     switch(status) {
-      case 'enrolled': return 'text-blue-300 bg-blue-900/30';
-      case 'completed': return 'text-green-300 bg-green-900/30';
-      case 'dropped': return 'text-red-300 bg-red-900/30';
-      case 'failed': return 'text-orange-300 bg-orange-900/30';
+      case 'pending': return 'text-yellow-300 bg-yellow-900/30';
+      case 'approved': return 'text-green-300 bg-green-900/30';
+      case 'rejected': return 'text-red-300 bg-red-900/30';
       default: return 'text-gray-300 bg-gray-700';
     }
+  };
+
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(amount);
   };
 
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-500 mx-auto"></div>
-          <p className="mt-4 text-amber-400">Loading dashboard data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
+          <p className="mt-4 text-blue-400">Loading HRMS dashboard...</p>
         </div>
       </div>
     );
@@ -217,70 +229,75 @@ const Dashboard = () => {
       <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 md:py-8">
         {/* Header */}
         <div className="mb-6 sm:mb-8">
-          <h1 className="text-2xl sm:text-3xl font-bold text-amber-400">Training Dashboard</h1>
-          <p className="text-sm sm:text-base text-gray-400 mt-1">Real-time insights on trades, modules, and trainees</p>
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent">
+            HRMS Dashboard
+          </h1>
+          <p className="text-sm sm:text-base text-gray-400 mt-1">Real-time HR insights and workforce analytics</p>
         </div>
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
-          <StatCard title="Total Trades" value={stats.total_trades} icon={FiBriefcase} />
-          <StatCard title="Total Modules" value={stats.total_modules} icon={FiBook} />
-          <StatCard title="Total Trainees" value={stats.total_trainees} icon={FiUsers} />
-          <StatCard title="Total Enrollments" value={stats.total_enrollments} icon={FiBookOpen} />
+          <StatCard title="Total Departments" value={stats.total_departments} icon={FiBriefcase} color="blue" />
+          <StatCard title="Total Positions" value={stats.total_positions} icon={FiAward} color="cyan" />
+          <StatCard title="Total Employees" value={stats.total_employees} icon={FiUsers} color="purple" />
+          <StatCard title="Monthly Payroll" value={formatCurrency(stats.monthly_payroll)} icon={FiDollarSign} color="green" />
         </div>
 
-        {/* Enrollment Status Breakdown */}
+        {/* Employee Status Breakdown */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8">
-          <div className="bg-gray-800 rounded-xl shadow-md p-3 sm:p-4 text-center border border-gray-700 hover:border-blue-500 transition">
-            <FiClock className="text-blue-400 mx-auto mb-2" size={24} />
-            <p className="text-2xl font-bold text-blue-400">{stats.enrolled_count}</p>
-            <p className="text-xs text-gray-400">Enrolled</p>
-          </div>
           <div className="bg-gray-800 rounded-xl shadow-md p-3 sm:p-4 text-center border border-gray-700 hover:border-green-500 transition">
-            <FiCheckCircle className="text-green-400 mx-auto mb-2" size={24} />
-            <p className="text-2xl font-bold text-green-400">{stats.completed_count}</p>
-            <p className="text-xs text-gray-400">Completed</p>
+            <FiUserCheck className="text-green-400 mx-auto mb-2" size={24} />
+            <p className="text-2xl font-bold text-green-400">{stats.active_employees}</p>
+            <p className="text-xs text-gray-400">Active</p>
           </div>
-          <div className="bg-gray-800 rounded-xl shadow-md p-3 sm:p-4 text-center border border-gray-700 hover:border-red-500 transition">
-            <FiXCircle className="text-red-400 mx-auto mb-2" size={24} />
-            <p className="text-2xl font-bold text-red-400">{stats.dropped_count}</p>
-            <p className="text-xs text-gray-400">Dropped</p>
+          <div className="bg-gray-800 rounded-xl shadow-md p-3 sm:p-4 text-center border border-gray-700 hover:border-yellow-500 transition">
+            <FiClock className="text-yellow-400 mx-auto mb-2" size={24} />
+            <p className="text-2xl font-bold text-yellow-400">{stats.on_leave}</p>
+            <p className="text-xs text-gray-400">On Leave</p>
           </div>
-          <div className="bg-gray-800 rounded-xl shadow-md p-3 sm:p-4 text-center border border-gray-700 hover:border-orange-500 transition">
-            <FiAlertCircle className="text-orange-400 mx-auto mb-2" size={24} />
-            <p className="text-2xl font-bold text-orange-400">{stats.failed_count}</p>
-            <p className="text-xs text-gray-400">Failed</p>
+          <div className="bg-gray-800 rounded-xl shadow-md p-3 sm:p-4 text-center border border-gray-700 hover:border-blue-500 transition">
+            <FiCalendar className="text-blue-400 mx-auto mb-2" size={24} />
+            <p className="text-2xl font-bold text-blue-400">{stats.attendance_today}</p>
+            <p className="text-xs text-gray-400">Present Today</p>
+          </div>
+          <div className="bg-gray-800 rounded-xl shadow-md p-3 sm:p-4 text-center border border-gray-700 hover:border-yellow-500 transition">
+            <FiAlertCircle className="text-yellow-400 mx-auto mb-2" size={24} />
+            <p className="text-2xl font-bold text-yellow-400">{stats.pending_leaves}</p>
+            <p className="text-xs text-gray-400">Pending Requests</p>
           </div>
         </div>
 
-        {/* Recent Enrollments & Top Trades */}
+        {/* Recent Employees & Top Departments */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
-          {/* Recent Enrollments */}
+          {/* Recent Employees */}
           <div className="bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-700">
             <div className="p-4 sm:p-6 border-b border-gray-700">
-              <h3 className="text-base sm:text-lg font-bold text-amber-400">Recent Enrollments</h3>
+              <h3 className="text-base sm:text-lg font-bold text-blue-400">Recent Hires</h3>
             </div>
             <div className="divide-y divide-gray-700 max-h-96 overflow-y-auto">
-              {recentEnrollments.length === 0 ? (
-                <div className="p-4 sm:p-6 text-center text-gray-500">No recent enrollments</div>
+              {recentEmployees.length === 0 ? (
+                <div className="p-4 sm:p-6 text-center text-gray-500">No employees found</div>
               ) : (
-                recentEnrollments.map((enrollment) => (
-                  <div key={enrollment.id} className="p-3 sm:p-4 hover:bg-gray-700 transition">
+                recentEmployees.map((employee) => (
+                  <div key={employee._id} className="p-3 sm:p-4 hover:bg-gray-700 transition">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="p-2 rounded-full flex-shrink-0 bg-gray-700">
-                          {getStatusIcon(enrollment.status)}
+                          <FiUsers className="text-blue-400" size={14} />
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="font-medium text-gray-200 text-sm sm:text-base truncate">{enrollment.traineeName}</p>
-                          <p className="text-xs sm:text-sm text-gray-400 truncate">{enrollment.moduleName}</p>
+                          <p className="font-medium text-gray-200 text-sm sm:text-base truncate">
+                            {employee.empFirstname} {employee.empLastname}
+                          </p>
+                          <p className="text-xs sm:text-sm text-gray-400 truncate">
+                            {employee.position_id?.posName || 'No position'} • {employee.department_id?.departName || 'No dept'}
+                          </p>
                         </div>
                       </div>
                       <div className="text-left sm:text-right pl-11 sm:pl-0">
-                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(enrollment.status)}`}>
-                          {enrollment.status}
-                        </span>
-                        <p className="text-xs text-gray-500 mt-1">{enrollment.enrollmentDate.toLocaleDateString()}</p>
+                        <p className="text-xs text-gray-500">
+                          Hired: {new Date(employee.empHiredate).toLocaleDateString()}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -289,30 +306,30 @@ const Dashboard = () => {
             </div>
           </div>
 
-          {/* Top Trades by Trainee Count */}
+          {/* Top Departments by Employee Count */}
           <div className="bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-700">
             <div className="p-4 sm:p-6 border-b border-gray-700">
-              <h3 className="text-base sm:text-lg font-bold text-amber-400">Top Trades by Trainees</h3>
+              <h3 className="text-base sm:text-lg font-bold text-cyan-400">Top Departments</h3>
             </div>
             <div className="divide-y divide-gray-700">
-              {topTrades.length === 0 ? (
-                <div className="p-4 sm:p-6 text-center text-gray-500">No trades found</div>
+              {topDepartments.length === 0 ? (
+                <div className="p-4 sm:p-6 text-center text-gray-500">No departments found</div>
               ) : (
-                topTrades.map((trade) => (
-                  <div key={trade._id} className="p-3 sm:p-4 hover:bg-gray-700 transition">
+                topDepartments.map((dept) => (
+                  <div key={dept._id} className="p-3 sm:p-4 hover:bg-gray-700 transition">
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-8 h-8 rounded-full bg-amber-900/50 flex items-center justify-center flex-shrink-0">
-                          <FiBriefcase className="text-amber-400" size={14} />
+                        <div className="w-8 h-8 rounded-full bg-blue-900/50 flex items-center justify-center flex-shrink-0">
+                          <FiBriefcase className="text-blue-400" size={14} />
                         </div>
                         <div className="min-w-0">
-                          <p className="font-medium text-gray-200 text-sm sm:text-base truncate">{trade.trade_name}</p>
-                          <p className="text-xs sm:text-sm text-gray-400 truncate">Trade</p>
+                          <p className="font-medium text-gray-200 text-sm sm:text-base truncate">{dept.departName}</p>
+                          <p className="text-xs sm:text-sm text-gray-400 truncate">Department</p>
                         </div>
                       </div>
                       <div className="text-right flex-shrink-0">
-                        <p className="font-bold text-amber-400 text-sm sm:text-base">
-                          {trade.traineeCount} trainee{trade.traineeCount !== 1 ? 's' : ''}
+                        <p className="font-bold text-blue-400 text-sm sm:text-base">
+                          {dept.employeeCount} employee{dept.employeeCount !== 1 ? 's' : ''}
                         </p>
                       </div>
                     </div>
@@ -323,35 +340,37 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Recent Trainees and Quick Actions */}
+        {/* Recent Leave Requests & Quick Actions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
-          {/* Recent Trainees */}
+          {/* Recent Leave Requests */}
           <div className="bg-gray-800 rounded-xl shadow-md overflow-hidden border border-gray-700">
             <div className="p-4 sm:p-6 border-b border-gray-700">
-              <h3 className="text-base sm:text-lg font-bold text-amber-400">Recent Trainees</h3>
+              <h3 className="text-base sm:text-lg font-bold text-yellow-400">Recent Leave Requests</h3>
             </div>
-            <div className="divide-y divide-gray-700">
-              {recentTrainees.length === 0 ? (
-                <div className="p-4 sm:p-6 text-center text-gray-500">No trainees found</div>
+            <div className="divide-y divide-gray-700 max-h-96 overflow-y-auto">
+              {recentLeaves.length === 0 ? (
+                <div className="p-4 sm:p-6 text-center text-gray-500">No leave requests found</div>
               ) : (
-                recentTrainees.map((trainee) => (
-                  <div key={trainee._id} className="p-3 sm:p-4 hover:bg-gray-700 transition">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-3 min-w-0 flex-1">
-                        <div className="w-8 h-8 rounded-full bg-amber-900/50 flex items-center justify-center flex-shrink-0">
-                          <FiUsers className="text-amber-400" size={14} />
+                recentLeaves.map((leave) => (
+                  <div key={leave._id} className="p-3 sm:p-4 hover:bg-gray-700 transition">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="p-2 rounded-full flex-shrink-0 bg-gray-700">
+                          {getLeaveStatusIcon(leave.status)}
                         </div>
-                        <div className="min-w-0">
+                        <div className="min-w-0 flex-1">
                           <p className="font-medium text-gray-200 text-sm sm:text-base truncate">
-                            {trainee.firstnames} {trainee.lastnames}
+                            {leave.employee_id?.empFirstname} {leave.employee_id?.empLastname}
                           </p>
                           <p className="text-xs sm:text-sm text-gray-400 truncate">
-                            {trainee.trade_id?.trade_name || 'No trade'}
+                            {leave.leave_type} • {new Date(leave.start_date).toLocaleDateString()} - {new Date(leave.end_date).toLocaleDateString()}
                           </p>
                         </div>
                       </div>
-                      <div className="text-right flex-shrink-0">
-                        <p className="text-xs text-gray-500">{new Date(trainee.created_at).toLocaleDateString()}</p>
+                      <div className="text-left sm:text-right pl-11 sm:pl-0">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${getLeaveStatusColor(leave.status)}`}>
+                          {leave.status}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -362,35 +381,35 @@ const Dashboard = () => {
 
           {/* Quick Actions */}
           <div className="bg-gray-800 rounded-xl shadow-md p-4 sm:p-6 border border-gray-700">
-            <h3 className="text-base sm:text-lg font-bold text-amber-400 mb-3 sm:mb-4">Quick Actions</h3>
+            <h3 className="text-base sm:text-lg font-bold text-blue-400 mb-3 sm:mb-4">Quick Actions</h3>
             <div className="grid grid-cols-2 gap-2 sm:gap-4">
               <button
-                onClick={() => window.location.href = '/trades'}
-                className="flex flex-col items-center p-3 sm:p-4 bg-gray-700 rounded-xl hover:bg-gray-600 transition border border-gray-600 hover:border-amber-500 group"
+                onClick={() => window.location.href = '/employees'}
+                className="flex flex-col items-center p-3 sm:p-4 bg-gray-700 rounded-xl hover:bg-gray-600 transition border border-gray-600 hover:border-blue-500 group"
               >
-                <FiBriefcase className="text-amber-400 mb-1 sm:mb-2 group-hover:scale-110 transition" size={20} />
-                <span className="text-xs sm:text-sm font-medium text-gray-200">Manage Trades</span>
+                <FiUsers className="text-blue-400 mb-1 sm:mb-2 group-hover:scale-110 transition" size={20} />
+                <span className="text-xs sm:text-sm font-medium text-gray-200">Add Employee</span>
               </button>
               <button
-                onClick={() => window.location.href = '/modules'}
-                className="flex flex-col items-center p-3 sm:p-4 bg-gray-700 rounded-xl hover:bg-gray-600 transition border border-gray-600 hover:border-amber-500 group"
+                onClick={() => window.location.href = '/attendance'}
+                className="flex flex-col items-center p-3 sm:p-4 bg-gray-700 rounded-xl hover:bg-gray-600 transition border border-gray-600 hover:border-cyan-500 group"
               >
-                <FiBook className="text-amber-400 mb-1 sm:mb-2 group-hover:scale-110 transition" size={20} />
-                <span className="text-xs sm:text-sm font-medium text-gray-200">Manage Modules</span>
+                <FiCalendar className="text-cyan-400 mb-1 sm:mb-2 group-hover:scale-110 transition" size={20} />
+                <span className="text-xs sm:text-sm font-medium text-gray-200">Mark Attendance</span>
               </button>
               <button
-                onClick={() => window.location.href = '/trainees'}
-                className="flex flex-col items-center p-3 sm:p-4 bg-gray-700 rounded-xl hover:bg-gray-600 transition border border-gray-600 hover:border-amber-500 group"
+                onClick={() => window.location.href = '/leaves'}
+                className="flex flex-col items-center p-3 sm:p-4 bg-gray-700 rounded-xl hover:bg-gray-600 transition border border-gray-600 hover:border-yellow-500 group"
               >
-                <FiUsers className="text-amber-400 mb-1 sm:mb-2 group-hover:scale-110 transition" size={20} />
-                <span className="text-xs sm:text-sm font-medium text-gray-200">Manage Trainees</span>
+                <FiClock className="text-yellow-400 mb-1 sm:mb-2 group-hover:scale-110 transition" size={20} />
+                <span className="text-xs sm:text-sm font-medium text-gray-200">Request Leave</span>
               </button>
               <button
-                onClick={() => window.location.href = '/trainees'}
-                className="flex flex-col items-center p-3 sm:p-4 bg-gray-700 rounded-xl hover:bg-gray-600 transition border border-gray-600 hover:border-amber-500 group"
+                onClick={() => window.location.href = '/reports'}
+                className="flex flex-col items-center p-3 sm:p-4 bg-gray-700 rounded-xl hover:bg-gray-600 transition border border-gray-600 hover:border-purple-500 group"
               >
-                <FiBookOpen className="text-amber-400 mb-1 sm:mb-2 group-hover:scale-110 transition" size={20} />
-                <span className="text-xs sm:text-sm font-medium text-gray-200">Enroll Trainee</span>
+                <FiBarChart2 className="text-purple-400 mb-1 sm:mb-2 group-hover:scale-110 transition" size={20} />
+                <span className="text-xs sm:text-sm font-medium text-gray-200">View Reports</span>
               </button>
             </div>
           </div>
