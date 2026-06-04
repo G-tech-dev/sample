@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 export default function Dashboard() {
+  // ===================== IMPORTS =====================
   // ===================== STATE =====================
   const [customers, setCustomers] = useState(0);
   const [vehicles, setVehicles] = useState(0);
