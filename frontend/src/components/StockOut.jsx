@@ -1,288 +1,249 @@
 import { useEffect, useState } from "react";
 import api from "../api";
-import { Plus, Pencil, Trash2, X, RotateCcw } from "lucide-react";
+import { ArrowRightLeft, Plus, Trash2, Save, X } from "lucide-react";
 
-export default function Reservations() {
-  // ===================== STATE =====================
-  const [reservations, setReservations] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [vehicles, setVehicles] = useState([]);
-
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-
-  const [form, setForm] = useState({
-    customer_id: "",
-    vehicle_id: "",
-    reservation_date: "",
-    start_date: "",
-    end_date: "",
-    reservation_status: "pending",
-    rental_date: "",
-    return_date: "",
-    rental_fee: "",
-    rental_status: "not_started",
+export default function StockOut() {
+  const [stockOut, setStockOut] = useState([]);
+  const [stockInOptions, setStockInOptions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [formData, setFormData] = useState({
+    quantityout: "",
+    stockin_id: "",
+    stockoutDate: new Date().toISOString().slice(0, 16),
   });
 
-  // ===================== FETCH ALL DATA =====================
-  const fetchReservations = async () => {
-    const res = await api.get("/reservations");
-    setReservations(res.data);
-  };
-
-  const fetchCustomers = async () => {
-    const res = await api.get("/customers");
-    setCustomers(res.data);
-  };
-
-  const fetchVehicles = async () => {
-    const res = await api.get("/vehicles");
-    setVehicles(res.data);
+  const fetchData = async () => {
+    try {
+      const [stockOutRes, stockInRes] = await Promise.all([
+        api.get("/stockout"),
+        api.get("/stockin"),
+      ]);
+      setStockOut(stockOutRes.data);
+      setStockInOptions(stockInRes.data);
+    } catch (err) {
+      console.log(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    fetchReservations();
-    fetchCustomers();
-    fetchVehicles();
+    fetchData();
   }, []);
 
-  // ===================== OPEN ADD =====================
-  const openAdd = () => {
-    setForm({
-      customer_id: "",
-      vehicle_id: "",
-      reservation_date: "",
-      start_date: "",
-      end_date: "",
-      reservation_status: "pending",
-      rental_date: "",
-      return_date: "",
-      rental_fee: "",
-      rental_status: "not_started",
-    });
-    setEditing(null);
-    setOpen(true);
-  };
-
-  // ===================== OPEN EDIT =====================
-  const openEdit = (r) => {
-    setForm(r);
-    setEditing(r._id);
-    setOpen(true);
-  };
-
-  // ===================== SUBMIT =====================
   const handleSubmit = async (e) => {
     e.preventDefault();
-
     try {
-      if (editing) {
-        await api.put(`/reservations/${editing}`, form);
-      } else {
-        await api.post("/reservations", form);
-      }
-
-      setOpen(false);
-      fetchReservations();
+      await api.post("/stockout", formData);
+      fetchData();
+      closeModal();
     } catch (err) {
       console.log(err);
+      alert(err.response?.data?.msg || "Error saving stock out");
     }
   };
 
-  // ===================== RETURN VEHICLE =====================
-  const handleReturn = async (id) => {
-    try {
-      await api.put(`/reservations/return/${id}`);
-      fetchReservations();
-    } catch (err) {
-      console.log(err);
-    }
-  };
-
-  // ===================== DELETE =====================
   const handleDelete = async (id) => {
-    if (!window.confirm("Delete this reservation?")) return;
-
-    try {
-      await api.delete(`/reservations/${id}`);
-      fetchReservations();
-    } catch (err) {
-      console.log(err);
+    if (window.confirm("Are you sure you want to delete this stock out entry?")) {
+      try {
+        await api.delete(`/stockout/${id}`);
+        fetchData();
+      } catch (err) {
+        console.log(err);
+        alert("Error deleting stock out");
+      }
     }
   };
 
-  // ===================== UI =====================
+  const closeModal = () => {
+    setShowModal(false);
+    setFormData({
+      quantityout: "",
+      stockin_id: "",
+      stockoutDate: new Date().toISOString().slice(0, 16),
+    });
+  };
+
+  // Get available quantity for selected item
+  const getAvailableQuantity = () => {
+    const selectedItem = stockInOptions.find(item => item._id === formData.stockin_id);
+    if (!selectedItem) return 0;
+    
+    // Calculate total stock out for this item
+    const totalOutForItem = stockOut
+      .filter(out => out.stockin_id?._id === formData.stockin_id || out.stockin_id === formData.stockin_id)
+      .reduce((sum, out) => sum + out.quantityout, 0);
+    
+    return selectedItem.quantityIn - totalOutForItem;
+  };
+
+  const availableQuantity = getAvailableQuantity();
+
   return (
-    <div className="p-6 text-white">
-
-      {/* HEADER */}
+    <div className="p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Reservations & Rentals</h1>
-
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <ArrowRightLeft /> Stock Out Management
+          </h1>
+          <p className="text-gray-400">Manage outgoing stock</p>
+        </div>
         <button
-          onClick={openAdd}
-          className="flex items-center gap-2 bg-green-600 px-4 py-2 rounded-lg hover:bg-green-700"
+          onClick={() => setShowModal(true)}
+          className="bg-yellow-600 hover:bg-yellow-700 px-4 py-2 rounded-lg flex items-center gap-2"
         >
-          <Plus size={18} />
-          New Reservation
+          <Plus size={20} /> Add Stock Out
         </button>
       </div>
 
-      {/* TABLE */}
-      <div className="overflow-x-auto bg-slate-800 rounded-xl">
-        <table className="w-full text-left">
-          <thead className="bg-slate-700">
-            <tr>
-              <th className="p-3">Customer</th>
-              <th className="p-3 hidden md:table-cell">Vehicle</th>
-              <th className="p-3">Start</th>
-              <th className="p-3 hidden md:table-cell">End</th>
-              <th className="p-3 hidden md:table-cell">Status</th>
-              <th className="p-3 hidden md:table-cell">Rental Status</th>
-              <th className="p-3 hidden md:table-cell">Fee</th>
-              <th className="p-3">Actions</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {reservations.map((r) => (
-              <tr key={r._id} className="border-b border-slate-700">
-
-                <td className="p-3">
-                  {r.customer_id?.full_name || "N/A"}
-                </td>
-
-                <td className="p-3 hidden md:table-cell">
-                  {r.vehicle_id?.plate_number || "N/A"}
-                </td>
-
-                <td className="p-3">{r.start_date?.slice(0, 10)}</td>
-                <td className="p-3 hidden md:table-cell">{r.end_date?.slice(0, 10)}</td>
-
-                <td className="p-3 hidden md:table-cell">
-                  <span className="px-2 py-1 bg-yellow-600 rounded text-sm">
-                    {r.reservation_status}
-                  </span>
-                </td>
-
-                <td className="p-3 hidden md:table-cell">
-                  <span className="px-2 py-1 bg-blue-600 rounded text-sm">
-                    {r.rental_status}
-                  </span>
-                </td>
-
-                <td className="p-3 hidden md:table-cell">{r.rental_fee}</td>
-
-                <td className="p-3 flex gap-3">
-
-                  <button onClick={() => openEdit(r)} aria-label={`Edit reservation ${r._id}`}>
-                    <Pencil className="text-blue-400" size={18} />
-                  </button>
-
-                  <button onClick={() => handleReturn(r._id)} aria-label={`Return ${r._id}`}>
-                    <RotateCcw className="text-green-400" size={18} />
-                  </button>
-
-                  <button onClick={() => handleDelete(r._id)} aria-label={`Delete ${r._id}`}>
-                    <Trash2 className="text-red-400" size={18} />
-                  </button>
-
-                </td>
+      {loading ? (
+        <p className="text-gray-400">Loading...</p>
+      ) : (
+        <div className="bg-slate-800 rounded-xl overflow-hidden">
+          <table className="w-full text-left">
+            <thead className="bg-slate-700">
+              <tr>
+                <th className="p-3">Item Name</th>
+                <th className="p-3">Quantity Out</th>
+                <th className="p-3 hidden md:table-cell">Date</th>
+                <th className="p-3">Issued By</th>
+                <th className="p-3">Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {stockOut.map((item) => (
+                <tr key={item._id} className="border-b border-slate-700">
+                  <td className="p-3 font-medium">
+                    {item.stockin_id?.itemname || "N/A"}
+                  </td>
+                  <td className="p-3">{item.quantityout}</td>
+                  <td className="p-3 hidden md:table-cell">
+                    {new Date(item.stockoutDate).toLocaleDateString()}
+                  </td>
+                  <td className="p-3">
+                    <span className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded-full bg-blue-500 flex items-center justify-center text-xs font-bold">
+                        {item.user_id?.user_name?.charAt(0).toUpperCase() || "?"}
+                      </div>
+                      {item.user_id?.user_name || "Unknown User"}
+                    </span>
+                  </td>
+                  <td className="p-3">
+                    <button
+                      onClick={() => handleDelete(item._id)}
+                      className="text-red-400 hover:text-red-300"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          
+          {stockOut.length === 0 && (
+            <div className="text-center p-8 text-gray-400">
+              No stock out records found
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* ===================== MODAL ===================== */}
-      {open && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center">
-
-          <div className="bg-slate-900 p-6 w-full h-full md:h-auto md:max-w-md md:rounded-xl md:mx-auto md:my-0 rounded-none overflow-auto">
-
-            {/* HEADER */}
+      {/* Modal */}
+      {showModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-slate-800 rounded-xl p-6 w-full max-w-md">
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold">
-                {editing ? "Update Reservation" : "New Reservation"}
-              </h2>
-
-              <button onClick={() => setOpen(false)}>
-                <X />
+              <h2 className="text-xl font-bold">Add Stock Out</h2>
+              <button onClick={closeModal} className="text-gray-400 hover:text-white">
+                <X size={24} />
               </button>
             </div>
-
-            {/* FORM */}
-            <form onSubmit={handleSubmit} className="space-y-3">
-
-              {/* CUSTOMER */}
-              <select
-                className="w-full p-2 bg-slate-800 rounded"
-                value={form.customer_id}
-                onChange={(e) =>
-                  setForm({ ...form, customer_id: e.target.value })
-                }
-              >
-                <option value="">Select Customer</option>
-                {customers.map((c) => (
-                  <option key={c._id} value={c._id}>
-                    {c.full_name}
-                  </option>
-                ))}
-              </select>
-
-              {/* VEHICLE */}
-              <select
-                className="w-full p-2 bg-slate-800 rounded"
-                value={form.vehicle_id}
-                onChange={(e) =>
-                  setForm({ ...form, vehicle_id: e.target.value })
-                }
-              >
-                <option value="">Select Vehicle</option>
-                {vehicles.map((v) => (
-                  <option key={v._id} value={v._id}>
-                    {v.plate_number}
-                  </option>
-                ))}
-              </select>
-
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <select
+                  className="w-full p-2 bg-slate-700 rounded"
+                  value={formData.stockin_id}
+                  onChange={(e) => setFormData({ ...formData, stockin_id: e.target.value })}
+                  required
+                >
+                  <option value="">Select Item</option>
+                  {stockInOptions.map((item) => {
+                    // Calculate remaining stock for each item
+                    const totalOutForItem = stockOut
+                      .filter(out => out.stockin_id?._id === item._id || out.stockin_id === item._id)
+                      .reduce((sum, out) => sum + out.quantityout, 0);
+                    const remaining = item.quantityIn - totalOutForItem;
+                    
+                    return (
+                      <option key={item._id} value={item._id}>
+                        {item.itemname} - Available: {remaining} {remaining > 0 ? "units" : "(Out of Stock)"}
+                      </option>
+                    );
+                  })}
+                </select>
+                {formData.stockin_id && (
+                  <p className="text-sm text-gray-400 mt-1">
+                    Available quantity: {availableQuantity} units
+                  </p>
+                )}
+              </div>
+              
               <input
-                type="date"
-                className="w-full p-2 bg-slate-800 rounded"
-                value={form.start_date}
-                onChange={(e) =>
-                  setForm({ ...form, start_date: e.target.value })
-                }
+                type="number"
+                placeholder="Quantity to Remove"
+                className="w-full p-2 bg-slate-700 rounded"
+                value={formData.quantityout}
+                onChange={(e) => setFormData({ ...formData, quantityout: parseInt(e.target.value) })}
+                required
+                max={availableQuantity}
               />
-
+              
               <input
-                type="date"
-                className="w-full p-2 bg-slate-800 rounded"
-                value={form.end_date}
-                onChange={(e) =>
-                  setForm({ ...form, end_date: e.target.value })
-                }
+                type="datetime-local"
+                className="w-full p-2 bg-slate-700 rounded"
+                value={formData.stockoutDate}
+                onChange={(e) => setFormData({ ...formData, stockoutDate: e.target.value })}
+                required
               />
-
-              <input
-                className="w-full p-2 bg-slate-800 rounded"
-                placeholder="Rental Fee"
-                value={form.rental_fee}
-                onChange={(e) =>
-                  setForm({ ...form, rental_fee: e.target.value })
-                }
-              />
-
-              {/* SUBMIT */}
-              <button className="w-full bg-blue-600 p-2 rounded hover:bg-blue-700">
-                {editing ? "Update" : "Create"}
-              </button>
-
+              
+              <div className="bg-slate-700/50 p-3 rounded-lg">
+                <p className="text-sm text-gray-300">
+                  <strong>Note:</strong> Stock will be issued under your account ({localStorage.getItem("user") ? JSON.parse(localStorage.getItem("user")).user_name : "Current User"})
+                </p>
+              </div>
+              
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={formData.quantityout > availableQuantity || !formData.quantityout}
+                  className={`flex-1 py-2 rounded-lg flex items-center justify-center gap-2 ${
+                    formData.quantityout > availableQuantity || !formData.quantityout
+                      ? "bg-gray-600 cursor-not-allowed"
+                      : "bg-yellow-600 hover:bg-yellow-700"
+                  }`}
+                >
+                  <Save size={18} /> Save
+                </button>
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="flex-1 bg-gray-600 hover:bg-gray-700 py-2 rounded-lg"
+                >
+                  Cancel
+                </button>
+              </div>
+              
+              {formData.quantityout > availableQuantity && availableQuantity > 0 && (
+                <p className="text-red-400 text-sm text-center">
+                  Cannot issue more than available quantity ({availableQuantity} units)
+                </p>
+              )}
             </form>
           </div>
         </div>
       )}
-
     </div>
   );
 }
