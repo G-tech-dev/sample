@@ -6,9 +6,9 @@ import Register from "./components/Register";
 import Sidebar from "./components/Sidebar";
 
 import Dashboard from "./components/Dashboard";
-import Customer from "./components/Customer";
-import Vehicle from "./components/Vehicle";
-import Reservations from "./components/Reservations";
+import StockIn from "./components/StockIn";
+import StockOut from "./components/StockOut";
+import StockSummary from "./components/StockSummary";
 import Report from "./components/Report";
 
 // ===================== PROTECTED WRAPPER =====================
@@ -34,11 +34,11 @@ function DashboardLayout() {
 
         {active === "dashboard" && <Dashboard />}
 
-        {active === "customers" && <Customer />}
+        {active === "stockin" && <StockIn />}
 
-        {active === "vehicles" && <Vehicle />}
+        {active === "stockout" && <StockOut />}
 
-        {active === "reservations" && <Reservations />}
+        {active === "summary" && <StockSummary />}
 
         {active === "reports" && <Report />}
 
