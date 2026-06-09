@@ -6,10 +6,10 @@ import Register from "./components/Register";
 import Sidebar from "./components/Sidebar";
 
 import Dashboard from "./components/Dashboard";
-import StockIn from "./components/StockIn";
-import StockOut from "./components/StockOut";
+import Items from "./components/Items";
+import Sales from "./components/Sales";
 import StockSummary from "./components/StockSummary";
-import Report from "./components/Report";
+import DailyReport from "./components/DailyReport";
 
 // ===================== PROTECTED WRAPPER =====================
 function ProtectedRoute({ children }) {
@@ -25,23 +25,13 @@ function DashboardLayout() {
 
   return (
     <div className="flex h-screen bg-slate-900">
-
-      {/* SIDEBAR (ALWAYS VISIBLE) */}
       <Sidebar active={active} setActive={setActive} />
-
-      {/* MAIN CONTENT */}
       <div className="flex-1 overflow-y-auto p-6 text-white">
-
         {active === "dashboard" && <Dashboard />}
-
-        {active === "stockin" && <StockIn />}
-
-        {active === "stockout" && <StockOut />}
-
+        {active === "items" && <Items />}
+        {active === "sales" && <Sales />}
         {active === "summary" && <StockSummary />}
-
-        {active === "reports" && <Report />}
-
+        {active === "reports" && <DailyReport />}
       </div>
     </div>
   );
@@ -52,12 +42,8 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-
-        {/* AUTH ROUTES */}
         <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
-
-        {/* PROTECTED DASHBOARD (WITH SIDEBAR ALWAYS ON) */}
         <Route
           path="/dashboard"
           element={
@@ -66,10 +52,7 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-
-        {/* REDIRECT ALL UNKNOWN ROUTES */}
         <Route path="*" element={<Navigate to="/" />} />
-
       </Routes>
     </BrowserRouter>
   );

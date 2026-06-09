@@ -1,3 +1,4 @@
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -9,19 +10,20 @@ const app = express();
 
 // ===================== MIDDLEWARE =====================
 app.use(express.json());
+
 app.use(cors({
   origin: "http://localhost:5173",
   credentials: true,
 }));
 
-const SESSION_SECRET = "sms_session_secret";
+const SESSION_SECRET = "srms_session_secret";
 
 app.use(session({
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   store: MongoStore.create({
-    mongoUrl: "mongodb://localhost:27017/sms",
+    mongoUrl: "mongodb://localhost:27017/SRMS",
     collectionName: "sessions",
   }),
   cookie: {
@@ -33,40 +35,51 @@ app.use(session({
 }));
 
 // ===================== MONGODB CONNECTION =====================
-mongoose.connect("mongodb://localhost:27017/sms")
-  .then(() => console.log("MongoDB Connected - SMS Database"))
+mongoose.connect("mongodb://localhost:27017/SRMS")
+  .then(() => console.log("MongoDB Connected - SRMS Database"))
   .catch((err) => console.log(err));
 
 // ===================== SCHEMAS =====================
 
-// USERS
+// USERS - UserName (PK), Password
 const UserSchema = new mongoose.Schema({
-  user_name: String,
-  password: String,
+  UserName: { type: String, unique: true, required: true },
+  Password: { type: String, required: true }
 });
 const User = mongoose.model("User", UserSchema);
 
-// STOCK IN
-const StockInSchema = new mongoose.Schema({
-  itemname: String,
-  description: String,
-  quantityIn: Number,
-  TotalQuantityIn: Number,
-  supplierName: String,
-  stockIndate: Date,
-  user_id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+// ITEMS - ItemName, Specification, UnitMeasure, Quantity, UnitPrice, TotalQuantity
+const ItemSchema = new mongoose.Schema({
+  ItemName: { type: String, required: true },
+  Specification: String,
+  UnitMeasure: String,
+  Quantity: { type: Number, default: 0 },
+  UnitPrice: { type: Number, required: true },
+  TotalQuantity: { type: Number, default: 0 }
 });
-const StockIn = mongoose.model("StockIn", StockInSchema);
+const Item = mongoose.model("Item", ItemSchema);
 
-// STOCK OUT
-const StockOutSchema = new mongoose.Schema({
-  quantityout: Number,
-  totalquantityout: Number,
-  stockoutDate: Date,
-  user_id: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-  stockin_id: { type: mongoose.Schema.Types.ObjectId, ref: "StockIn" },
+// SALES - SaleDate, CustomerName, TotalPrice
+const SaleSchema = new mongoose.Schema({
+  SaleDate: { type: Date, default: Date.now },
+  CustomerName: { type: String, required: true },
+  TotalPrice: { type: Number, default: 0 },
+  user_id: { type: mongoose.Schema.Types.ObjectId, ref: "User" }
 });
-const StockOut = mongoose.model("StockOut", StockOutSchema);
+const Sale = mongoose.model("Sale", SaleSchema);
+
+// SALE DETAIL - QuantitySold, SubTotalPrice
+const SaleDetailSchema = new mongoose.Schema({
+  sale_id: { type: mongoose.Schema.Types.ObjectId, ref: "Sale", required: true },
+  item_id: { type: mongoose.Schema.Types.ObjectId, ref: "Item", required: true },
+  QuantitySold: { type: Number, required: true },
+  SubTotalPrice: { type: Number, required: true },
+  UnitPriceAtSale: { type: Number, required: true },
+  ItemName: String,
+  Specification: String,
+  UnitMeasure: String
+});
+const SaleDetail = mongoose.model("SaleDetail", SaleDetailSchema);
 
 // ===================== AUTH MIDDLEWARE =====================
 const verifySession = (req, res, next) => {
@@ -81,13 +94,17 @@ const verifySession = (req, res, next) => {
 // REGISTER
 app.post("/api/auth/register", async (req, res) => {
   try {
-    const { user_name, password } = req.body;
-
-    const hashed = await bcrypt.hash(password, 10);
-
-    const user = new User({ user_name, password: hashed });
+    const { UserName, Password } = req.body;
+    
+    const existingUser = await User.findOne({ UserName });
+    if (existingUser) {
+      return res.status(400).json({ msg: "Username already exists" });
+    }
+    
+    const hashed = await bcrypt.hash(Password, 10);
+    const user = new User({ UserName, Password: hashed });
     await user.save();
-
+    
     res.json({ msg: "User created successfully" });
   } catch (err) {
     res.status(500).json(err);
@@ -97,21 +114,21 @@ app.post("/api/auth/register", async (req, res) => {
 // LOGIN
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const { user_name, password } = req.body;
-
-    const user = await User.findOne({ user_name });
+    const { UserName, Password } = req.body;
+    
+    const user = await User.findOne({ UserName });
     if (!user) return res.status(400).json({ msg: "User not found" });
-
-    const match = await bcrypt.compare(password, user.password);
+    
+    const match = await bcrypt.compare(Password, user.Password);
     if (!match) return res.status(400).json({ msg: "Wrong password" });
-
+    
     req.session.userId = user._id;
-    req.session.user_name = user.user_name;
-
+    req.session.UserName = user.UserName;
+    
     res.json({
       user: {
         id: user._id,
-        user_name: user.user_name,
+        UserName: user.UserName,
       },
     });
   } catch (err) {
@@ -119,6 +136,7 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+// LOGOUT
 app.post("/api/auth/logout", (req, res) => {
   req.session.destroy((err) => {
     if (err) return res.status(500).json({ msg: "Logout failed" });
@@ -127,6 +145,7 @@ app.post("/api/auth/logout", (req, res) => {
   });
 });
 
+// CHECK SESSION
 app.get("/api/auth/me", (req, res) => {
   if (!req.session?.userId) {
     return res.status(401).json({ msg: "Not authenticated" });
@@ -134,203 +153,328 @@ app.get("/api/auth/me", (req, res) => {
   return res.json({
     user: {
       id: req.session.userId,
-      user_name: req.session.user_name,
+      UserName: req.session.UserName,
     },
   });
 });
 
-// ===================== STOCK IN CRUD =====================
+// ===================== ITEMS CRUD =====================
 
-// GET all stock in entries
-app.get("/api/stockin", verifySession, async (req, res) => {
+// GET all items
+app.get("/api/items", verifySession, async (req, res) => {
   try {
-    const stockInEntries = await StockIn.find().populate("user_id", "user_name");
-    res.json(stockInEntries);
+    const items = await Item.find();
+    res.json(items);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// GET single stock in entry
-app.get("/api/stockin/:id", verifySession, async (req, res) => {
+// GET single item
+app.get("/api/items/:id", verifySession, async (req, res) => {
   try {
-    const stockInEntry = await StockIn.findById(req.params.id).populate("user_id", "user_name");
-    if (!stockInEntry) return res.status(404).json({ msg: "Stock in entry not found" });
-    res.json(stockInEntry);
+    const item = await Item.findById(req.params.id);
+    if (!item) return res.status(404).json({ msg: "Item not found" });
+    res.json(item);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// CREATE stock in entry
-app.post("/api/stockin", verifySession, async (req, res) => {
+// CREATE item
+app.post("/api/items", verifySession, async (req, res) => {
   try {
-    const stockInData = {
-      ...req.body,
-      user_id: req.session.userId,
-      stockIndate: req.body.stockIndate || new Date()
-    };
-    const stockIn = new StockIn(stockInData);
-    await stockIn.save();
-    
-    const populatedStockIn = await StockIn.findById(stockIn._id).populate("user_id", "user_name");
-    res.json(populatedStockIn);
+    const item = new Item(req.body);
+    await item.save();
+    res.json(item);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// UPDATE stock in entry
-app.put("/api/stockin/:id", verifySession, async (req, res) => {
+// UPDATE item
+app.put("/api/items/:id", verifySession, async (req, res) => {
   try {
-    const updated = await StockIn.findByIdAndUpdate(
+    const updated = await Item.findByIdAndUpdate(
       req.params.id, 
       req.body, 
       { new: true }
-    ).populate("user_id", "user_name");
-    
-    if (!updated) return res.status(404).json({ msg: "Stock in entry not found" });
+    );
+    if (!updated) return res.status(404).json({ msg: "Item not found" });
     res.json(updated);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// DELETE stock in entry (only if no related stock out entries)
-app.delete("/api/stockin/:id", verifySession, async (req, res) => {
+// DELETE item
+app.delete("/api/items/:id", verifySession, async (req, res) => {
   try {
-    const relatedStockOut = await StockOut.findOne({ stockin_id: req.params.id });
-    if (relatedStockOut) {
-      return res.status(400).json({ msg: "Cannot delete stock in entry with existing stock out records" });
+    const relatedSaleDetails = await SaleDetail.findOne({ item_id: req.params.id });
+    if (relatedSaleDetails) {
+      return res.status(400).json({ msg: "Cannot delete item with existing sale records" });
     }
-    
-    await StockIn.findByIdAndDelete(req.params.id);
-    res.json({ msg: "Stock in entry deleted successfully" });
+    await Item.findByIdAndDelete(req.params.id);
+    res.json({ msg: "Item deleted successfully" });
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// ===================== STOCK OUT CRUD =====================
-
-// GET all stock out entries
-app.get("/api/stockout", verifySession, async (req, res) => {
+// SEARCH items
+app.get("/api/items/search/:keyword", verifySession, async (req, res) => {
   try {
-    const stockOutEntries = await StockOut.find()
-      .populate("user_id", "user_name")
-      .populate("stockin_id", "itemname description quantityIn supplierName");
-    res.json(stockOutEntries);
+    const keyword = req.params.keyword;
+    const items = await Item.find({
+      $or: [
+        { ItemName: { $regex: keyword, $options: 'i' } },
+        { Specification: { $regex: keyword, $options: 'i' } }
+      ]
+    });
+    res.json(items);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// GET single stock out entry
-app.get("/api/stockout/:id", verifySession, async (req, res) => {
+// ===================== SALES CRUD =====================
+
+// GET all sales
+app.get("/api/sales", verifySession, async (req, res) => {
   try {
-    const stockOutEntry = await StockOut.findById(req.params.id)
-      .populate("user_id", "user_name")
-      .populate("stockin_id", "itemname description quantityIn supplierName");
-    
-    if (!stockOutEntry) return res.status(404).json({ msg: "Stock out entry not found" });
-    res.json(stockOutEntry);
+    const sales = await Sale.find()
+      .populate("user_id", "UserName")
+      .sort({ SaleDate: -1 });
+    res.json(sales);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// CREATE stock out entry
-app.post("/api/stockout", verifySession, async (req, res) => {
+// GET single sale with details
+app.get("/api/sales/:id", verifySession, async (req, res) => {
   try {
-    // Check if stock in entry exists and has enough quantity
-    const stockInEntry = await StockIn.findById(req.body.stockin_id);
-    if (!stockInEntry) {
-      return res.status(404).json({ msg: "Stock in entry not found" });
-    }
+    const sale = await Sale.findById(req.params.id).populate("user_id", "UserName");
+    if (!sale) return res.status(404).json({ msg: "Sale not found" });
     
-    // Calculate total quantity out for this stock in entry
-    const existingStockOut = await StockOut.find({ stockin_id: req.body.stockin_id });
-    const totalOutSoFar = existingStockOut.reduce((sum, item) => sum + item.quantityout, 0);
+    const details = await SaleDetail.find({ sale_id: sale._id }).populate("item_id", "ItemName Specification UnitMeasure UnitPrice");
     
-    const newQuantityOut = req.body.quantityout;
-    const remainingQuantity = stockInEntry.quantityIn - totalOutSoFar;
+    res.json({ sale, details });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+// CREATE sale (with multiple details)
+app.post("/api/sales", verifySession, async (req, res) => {
+  try {
+    const { CustomerName, items } = req.body;
     
-    if (newQuantityOut > remainingQuantity) {
-      return res.status(400).json({ 
-        msg: `Insufficient stock. Available quantity: ${remainingQuantity}` 
+    let totalPrice = 0;
+    const saleDetails = [];
+    
+    // Process each item in the sale
+    for (const saleItem of items) {
+      const item = await Item.findById(saleItem.item_id);
+      if (!item) {
+        return res.status(404).json({ msg: `Item not found: ${saleItem.item_id}` });
+      }
+      
+      // Check if enough quantity is available
+      if (item.Quantity < saleItem.QuantitySold) {
+        return res.status(400).json({ 
+          msg: `Insufficient stock for ${item.ItemName}. Available: ${item.Quantity}, Requested: ${saleItem.QuantitySold}` 
+        });
+      }
+      
+      const subTotal = saleItem.QuantitySold * item.UnitPrice;
+      totalPrice += subTotal;
+      
+      saleDetails.push({
+        item_id: item._id,
+        QuantitySold: saleItem.QuantitySold,
+        SubTotalPrice: subTotal,
+        UnitPriceAtSale: item.UnitPrice,
+        ItemName: item.ItemName,
+        Specification: item.Specification,
+        UnitMeasure: item.UnitMeasure
       });
+      
+      // Update item quantity
+      item.Quantity -= saleItem.QuantitySold;
+      await item.save();
     }
     
-    const stockOutData = {
-      ...req.body,
+    // Create sale record
+    const sale = new Sale({
+      CustomerName,
+      TotalPrice: totalPrice,
       user_id: req.session.userId,
-      stockoutDate: req.body.stockoutDate || new Date(),
-      totalquantityout: newQuantityOut // You can set this as needed
-    };
+      SaleDate: new Date()
+    });
+    await sale.save();
     
-    const stockOut = new StockOut(stockOutData);
-    await stockOut.save();
+    // Create sale details
+    for (const detail of saleDetails) {
+      const saleDetail = new SaleDetail({
+        ...detail,
+        sale_id: sale._id
+      });
+      await saleDetail.save();
+    }
     
-    const populatedStockOut = await StockOut.findById(stockOut._id)
-      .populate("user_id", "user_name")
-      .populate("stockin_id", "itemname description quantityIn supplierName");
+    const populatedSale = await Sale.findById(sale._id).populate("user_id", "UserName");
+    const savedDetails = await SaleDetail.find({ sale_id: sale._id }).populate("item_id");
     
-    res.json(populatedStockOut);
+    res.json({ sale: populatedSale, details: savedDetails });
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// UPDATE stock out entry
-app.put("/api/stockout/:id", verifySession, async (req, res) => {
+// UPDATE sale
+app.put("/api/sales/:id", verifySession, async (req, res) => {
   try {
-    const updated = await StockOut.findByIdAndUpdate(
+    const updated = await Sale.findByIdAndUpdate(
       req.params.id, 
       req.body, 
       { new: true }
-    ).populate("user_id", "user_name")
-     .populate("stockin_id", "itemname description quantityIn supplierName");
+    ).populate("user_id", "UserName");
     
-    if (!updated) return res.status(404).json({ msg: "Stock out entry not found" });
+    if (!updated) return res.status(404).json({ msg: "Sale not found" });
     res.json(updated);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// DELETE stock out entry
-app.delete("/api/stockout/:id", verifySession, async (req, res) => {
+// DELETE sale
+app.delete("/api/sales/:id", verifySession, async (req, res) => {
   try {
-    await StockOut.findByIdAndDelete(req.params.id);
-    res.json({ msg: "Stock out entry deleted successfully" });
+    // Get all sale details to restore quantities
+    const saleDetails = await SaleDetail.find({ sale_id: req.params.id });
+    
+    // Restore item quantities
+    for (const detail of saleDetails) {
+      const item = await Item.findById(detail.item_id);
+      if (item) {
+        item.Quantity += detail.QuantitySold;
+        await item.save();
+      }
+    }
+    
+    // Delete sale details and sale
+    await SaleDetail.deleteMany({ sale_id: req.params.id });
+    await Sale.findByIdAndDelete(req.params.id);
+    
+    res.json({ msg: "Sale deleted successfully" });
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
-// ===================== ADDITIONAL SMS SPECIFIC ROUTES =====================
+// ===================== SALE DETAILS ROUTES =====================
 
-// Get current stock levels (summary)
+// GET sale details by sale ID
+app.get("/api/saledetails/:sale_id", verifySession, async (req, res) => {
+  try {
+    const details = await SaleDetail.find({ sale_id: req.params.sale_id })
+      .populate("item_id", "ItemName Specification UnitMeasure UnitPrice");
+    res.json(details);
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+// ===================== REPORTING ROUTES =====================
+
+// Generate daily sales report
+app.get("/api/reports/daily/:date", verifySession, async (req, res) => {
+  try {
+    const reportDate = new Date(req.params.date);
+    const startOfDay = new Date(reportDate.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(reportDate.setHours(23, 59, 59, 999));
+    
+    // Find all sales for the specified date
+    const sales = await Sale.find({
+      SaleDate: { $gte: startOfDay, $lte: endOfDay }
+    });
+    
+    const saleIds = sales.map(sale => sale._id);
+    
+    // Get all sale details for those sales
+    const saleDetails = await SaleDetail.find({ sale_id: { $in: saleIds } })
+      .populate("item_id");
+    
+    // Calculate total amount for all sales
+    const totalAmount = sales.reduce((sum, sale) => sum + sale.TotalPrice, 0);
+    
+    // Prepare report data with sold items
+    const soldItems = saleDetails.map(detail => ({
+      ItemName: detail.ItemName,
+      Specification: detail.Specification,
+      UnitMeasure: detail.UnitMeasure,
+      UnitPrice: detail.UnitPriceAtSale,
+      QuantitySold: detail.QuantitySold,
+      SubTotalPrice: detail.SubTotalPrice,
+      SaleDate: sales.find(s => s._id.equals(detail.sale_id))?.SaleDate
+    }));
+    
+    res.json({
+      reportDate: startOfDay,
+      totalAmount: totalAmount,
+      totalSales: sales.length,
+      soldItems: soldItems,
+      sales: sales.map(sale => ({
+        saleId: sale._id,
+        customerName: sale.CustomerName,
+        totalPrice: sale.TotalPrice,
+        saleDate: sale.SaleDate
+      }))
+    });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+// Get sales report for date range
+app.get("/api/reports/range/:startDate/:endDate", verifySession, async (req, res) => {
+  try {
+    const startDate = new Date(req.params.startDate);
+    const endDate = new Date(req.params.endDate);
+    endDate.setHours(23, 59, 59, 999);
+    
+    const sales = await Sale.find({
+      SaleDate: { $gte: startDate, $lte: endDate }
+    }).sort({ SaleDate: -1 });
+    
+    const totalAmount = sales.reduce((sum, sale) => sum + sale.TotalPrice, 0);
+    
+    res.json({
+      startDate: startDate,
+      endDate: endDate,
+      totalAmount: totalAmount,
+      totalSales: sales.length,
+      sales: sales
+    });
+  } catch (err) {
+    res.status(500).json(err);
+  }
+});
+
+// Get current stock levels
 app.get("/api/stock/summary", verifySession, async (req, res) => {
   try {
-    const stockInEntries = await StockIn.find();
-    const stockSummary = [];
-    
-    for (const stockIn of stockInEntries) {
-      const stockOuts = await StockOut.find({ stockin_id: stockIn._id });
-      const totalOut = stockOuts.reduce((sum, out) => sum + out.quantityout, 0);
-      const currentStock = stockIn.quantityIn - totalOut;
-      
-      stockSummary.push({
-        itemname: stockIn.itemname,
-        description: stockIn.description,
-        totalReceived: stockIn.quantityIn,
-        totalIssued: totalOut,
-        currentStock: currentStock,
-        supplierName: stockIn.supplierName,
-        lastStockInDate: stockIn.stockIndate
-      });
-    }
+    const items = await Item.find();
+    const stockSummary = items.map(item => ({
+      ItemName: item.ItemName,
+      Specification: item.Specification,
+      UnitMeasure: item.UnitMeasure,
+      UnitPrice: item.UnitPrice,
+      CurrentQuantity: item.Quantity,
+      TotalQuantityReceived: item.TotalQuantity || item.Quantity,
+      ValueInStock: item.Quantity * item.UnitPrice
+    }));
     
     res.json(stockSummary);
   } catch (err) {
@@ -338,31 +482,29 @@ app.get("/api/stock/summary", verifySession, async (req, res) => {
   }
 });
 
-// Get stock history for specific item
-app.get("/api/stock/history/:stockin_id", verifySession, async (req, res) => {
+// Search sales by customer name
+app.get("/api/sales/search/:customerName", verifySession, async (req, res) => {
   try {
-    const stockIn = await StockIn.findById(req.params.stockin_id).populate("user_id", "user_name");
-    if (!stockIn) {
-      return res.status(404).json({ msg: "Stock in entry not found" });
-    }
+    const sales = await Sale.find({
+      CustomerName: { $regex: req.params.customerName, $options: 'i' }
+    }).populate("user_id", "UserName").sort({ SaleDate: -1 });
     
-    const stockOuts = await StockOut.find({ stockin_id: req.params.stockin_id })
-      .populate("user_id", "user_name");
-    
-    res.json({
-      stockIn: stockIn,
-      stockOuts: stockOuts,
-      totalOut: stockOuts.reduce((sum, out) => sum + out.quantityout, 0),
-      remainingStock: stockIn.quantityIn - stockOuts.reduce((sum, out) => sum + out.quantityout, 0)
-    });
+    res.json(sales);
   } catch (err) {
     res.status(500).json(err);
   }
 });
 
 // ===================== START SERVER =====================
-app.listen(5000, () => {
-  console.log("SMS Server running on port 5000");
-  console.log("Database: sms");
-  console.log("Collections: users, stockins, stockouts");
+const PORT = 5000;
+app.listen(PORT, () => {
+  console.log(`SRMS Server running on port ${PORT}`);
+  console.log("Database: SRMS");
+  console.log("Collections: users, items, sales, saledetails");
+  console.log("\n=== SRMS API Endpoints ===");
+  console.log("Auth: /api/auth/register, /api/auth/login, /api/auth/logout");
+  console.log("Items: GET/POST/PUT/DELETE /api/items");
+  console.log("Sales: GET/POST/PUT/DELETE /api/sales");
+  console.log("Reports: /api/reports/daily/:date");
+  console.log("Stock Summary: /api/stock/summary");
 });

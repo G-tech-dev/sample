@@ -1,7 +1,7 @@
 import { 
   LayoutDashboard, 
   Package, 
-  ArrowRightLeft, 
+  ShoppingCart, 
   BarChart3, 
   FileText,
   LogOut 
@@ -18,27 +18,24 @@ export default function Sidebar({ active, setActive }) {
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "stockin", label: "Stock In", icon: Package },
-    { id: "stockout", label: "Stock Out", icon: ArrowRightLeft },
-    { id: "summary", label: "Stock Summary", icon: BarChart3 },
-    { id: "reports", label: "Reports", icon: FileText },
+    { id: "items", label: "Items", icon: Package },
+    { id: "sales", label: "Sales", icon: ShoppingCart },
+    { id: "summary", label: "Sales Details", icon: BarChart3 },
+    { id: "reports", label: "Daily Reports", icon: FileText },
   ];
 
   return (
     <div className="w-64 bg-slate-800 text-white flex flex-col">
-      
-      {/* LOGO */}
       <div className="p-6 border-b border-slate-700">
         <div className="flex items-center gap-2">
-          <Package className="text-blue-400" size={28} />
+          <ShoppingCart className="text-blue-400" size={28} />
           <div>
-            <h1 className="text-xl font-bold">SMS</h1>
-            <p className="text-xs text-gray-400">Stock Management</p>
+            <h1 className="text-xl font-bold">SRMS</h1>
+            <p className="text-xs text-gray-400">Sales Records Management</p>
           </div>
         </div>
       </div>
 
-      {/* MENU ITEMS */}
       <nav className="flex-1 p-4 space-y-2">
         {menuItems.map((item) => {
           const Icon = item.icon;
@@ -59,7 +56,6 @@ export default function Sidebar({ active, setActive }) {
         })}
       </nav>
 
-      {/* LOGOUT BUTTON */}
       <div className="p-4 border-t border-slate-700">
         <button
           onClick={handleLogout}

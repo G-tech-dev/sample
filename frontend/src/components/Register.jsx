@@ -1,6 +1,6 @@
 import { useState } from "react";
 import api from "../api";
-import { User, Lock, Package } from "lucide-react";
+import { User, Lock, ShoppingCart } from "lucide-react";
 import { useNavigate, Link } from "react-router-dom";
 
 export default function Register() {
@@ -8,8 +8,8 @@ export default function Register() {
 
   // ===================== STATE =====================
   const [form, setForm] = useState({
-    user_name: "", // Changed from username to user_name
-    password: "",
+    UserName: "", // Updated to match backend schema (UpperCase)
+    Password: "",
   });
 
   const [loading, setLoading] = useState(false);
@@ -21,12 +21,29 @@ export default function Register() {
     setLoading(true);
     setError("");
 
-    try {
-      await api.post("/auth/register", form);
+    // Validation
+    if (form.UserName.length < 3) {
+      setError("Username must be at least 3 characters long");
+      setLoading(false);
+      return;
+    }
 
-      alert("Account created successfully!");
+    if (form.Password.length < 4) {
+      setError("Password must be at least 4 characters long");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await api.post("/auth/register", {
+        UserName: form.UserName,
+        Password: form.Password
+      });
+
+      alert("Account created successfully! Please login.");
       navigate("/");
     } catch (err) {
+      console.error("Registration error:", err);
       setError(
         err.response?.data?.msg || "Something went wrong. Try again."
       );
@@ -38,57 +55,57 @@ export default function Register() {
   // ===================== UI =====================
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 px-4">
-
       <div className="w-full max-w-md bg-white/10 backdrop-blur-lg p-8 rounded-2xl shadow-xl border border-white/20">
-
+        
         {/* TITLE */}
         <div className="text-center mb-6">
-          <Package className="text-green-400 mx-auto mb-2" size={40} />
+          <ShoppingCart className="text-blue-400 mx-auto mb-2" size={40} />
           <h2 className="text-white text-2xl font-bold">
             Create Account
           </h2>
           <p className="text-gray-300 text-sm mt-1">
-            Stock Management System
+            Sales Records Management System
           </p>
         </div>
 
         {/* ERROR MESSAGE */}
         {error && (
-          <div className="bg-red-500/20 text-red-300 p-2 rounded mb-4 text-sm text-center">
+          <div className="bg-red-500/20 text-red-300 p-3 rounded-lg mb-4 text-sm text-center border border-red-500/30">
             {error}
           </div>
         )}
 
         {/* FORM */}
         <form onSubmit={handleRegister} className="space-y-4">
-
           {/* USERNAME */}
-          <div className="flex items-center bg-white/10 rounded-lg px-3">
+          <div className="flex items-center bg-white/10 rounded-lg px-3 focus-within:bg-white/20 transition">
             <User className="text-white" size={18} />
             <input
               type="text"
-              placeholder="Username"
+              placeholder="Username (min. 3 characters)"
               className="w-full p-3 bg-transparent text-white outline-none"
-              value={form.user_name}
+              value={form.UserName}
               onChange={(e) =>
-                setForm({ ...form, user_name: e.target.value })
+                setForm({ ...form, UserName: e.target.value })
               }
               required
+              minLength="3"
             />
           </div>
 
           {/* PASSWORD */}
-          <div className="flex items-center bg-white/10 rounded-lg px-3">
+          <div className="flex items-center bg-white/10 rounded-lg px-3 focus-within:bg-white/20 transition">
             <Lock className="text-white" size={18} />
             <input
               type="password"
-              placeholder="Password"
+              placeholder="Password (min. 4 characters)"
               className="w-full p-3 bg-transparent text-white outline-none"
-              value={form.password}
+              value={form.Password}
               onChange={(e) =>
-                setForm({ ...form, password: e.target.value })
+                setForm({ ...form, Password: e.target.value })
               }
               required
+              minLength="4"
             />
           </div>
 
@@ -96,7 +113,7 @@ export default function Register() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-green-600 hover:bg-green-700 text-white p-3 rounded-lg transition font-semibold"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-lg transition font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Creating account..." : "Register"}
           </button>
@@ -105,10 +122,17 @@ export default function Register() {
         {/* LOGIN LINK */}
         <p className="text-center text-gray-300 mt-4 text-sm">
           Already have an account?{" "}
-          <Link className="text-blue-400 hover:underline" to="/">
-            Login
+          <Link className="text-blue-400 hover:text-blue-300 hover:underline transition" to="/">
+            Login here
           </Link>
         </p>
+
+        {/* INFO NOTE */}
+        <div className="mt-6 pt-4 border-t border-white/10">
+          <p className="text-gray-400 text-xs text-center">
+            Demo credentials: Username: admin, Password: admin123
+          </p>
+        </div>
       </div>
     </div>
   );
